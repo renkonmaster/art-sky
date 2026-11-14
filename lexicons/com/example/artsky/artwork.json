@@ -37,7 +37,7 @@
           },
           "params": {
             "type": "unknown",
-            "description": "描画関数に渡すパラメータ (JSON オブジェクト)。中身は code ごとに異なる。"
+            "description": "描画関数に渡すパラメータ (JSON オブジェクト)。中身は code ごとに異なる。AT Protocol のデータモデルに従い、数値は整数だけを使う。"
           },
           "seed": {
             "type": "integer",
@@ -65,7 +65,7 @@
           },
           "state": {
             "type": "unknown",
-            "description": "次の作品の生成に引き継ぐ状態 (JSON オブジェクト)。生成側だけが解釈し、描画には使わない。"
+            "description": "次の作品の生成に引き継ぐ状態 (JSON オブジェクト)。生成側だけが解釈し、描画には使わない。中身は generator.id ごとに決める。数値は整数だけを使う。"
           },
           "createdAt": {
             "type": "string",

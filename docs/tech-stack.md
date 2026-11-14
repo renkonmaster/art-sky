@@ -25,13 +25,23 @@ lexicons/              Lexicon JSON（正本）
 packages/
   lexicon/             Lexicon から生成した型と検証関数
   renderer/            描画環境 canvas2d v1（iframe ランナー、乱数、ホスト側 API）
-apps/
-  generator/           生成サービス（API とジョブワーカー）
-  appview/             ギャラリー API（Jetstream 購読、索引、XRPC）
-  web/                 画面（ギャラリーと投稿・管理画面）
+backend/               generator と appview（1 つのサーバーの中でモジュールを分ける。roles.md）
+frontend/              画面（ギャラリーと投稿・管理画面）
 ```
 
 `packages/renderer` は、generator の検証とギャラリーの描画で同じものを使う。
+
+### 試作 SkyMood から引き継いだもの
+
+`backend/` は、空のアートを作る試作 SkyMood（JavaScript + Express）を元にしている。
+次のものは TypeScript に移して使い、それ以外（Express の画面、SVG の空の描画、PNG 出力）は使わない。
+
+| SkyMood | 移した先 | 変えたこと |
+|---|---|---|
+| `fetchPosts.js` | `backend/src/bluesky/posts.ts` | 300 件 → 100 件。返信・引用・リポストを除く（Plan.md 10 節） |
+| `stats.js` | `backend/src/features/stats.ts` | PDS に保存できるよう、値をすべて整数にした |
+| `analyze.js` | `backend/src/generation/`（Claude の出力の `analysis`） | 描画関数の生成と同じ 1 回の呼び出しで推定する。キーワード辞書による簡易判定はやめた |
+| `oauth.js` | `backend/src/auth/oauth.ts` | スコープを `transition:generic` から必要な操作だけに絞った |
 
 ## 共通
 
