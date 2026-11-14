@@ -25,13 +25,25 @@ lexicons/              Lexicon JSON（正本）
 packages/
   api/                 API と作品レコードのスキーマ（Zod）。フロントエンドとバックエンドで共有する
   renderer/            描画環境 canvas2d v1（作品を動かす iframe 用の HTML を作る）
-backend/               ログイン、投稿の監視、作品の生成、ギャラリーの索引と API
+backend/               ログイン、作品の生成、ギャラリーの索引と API（1 つのサーバーの中でモジュールを分ける。roles.md）
 frontend/              画面。開発時はモックでバックエンドなしでも動く
 ```
 
 `packages/renderer` は、バックエンドの検証とフロントエンドの描画で同じものを使う。
 
 > 以下の「generator」と「appview」は、バックエンドの中の 2 つのモジュール（生成と索引）を指す。
+
+### 試作 SkyMood から引き継いだもの
+
+`backend/` は、空のアートを作る試作 SkyMood（JavaScript + Express）を元にしている。
+次のものは TypeScript に移して使い、それ以外（Express の画面、SVG の空の描画、PNG 出力）は使わない。
+
+| SkyMood | 移した先 | 変えたこと |
+|---|---|---|
+| `fetchPosts.js` | `backend/src/bluesky/posts.ts` | 300 件 → 100 件。返信・引用・リポストを除く（Plan.md 10 節） |
+| `stats.js` | `backend/src/features/stats.ts` | PDS に保存できるよう、値をすべて整数にした |
+| `analyze.js` | `backend/src/generation/`（Claude の出力の `analysis`） | 描画関数の生成と同じ 1 回の呼び出しで推定する。キーワード辞書による簡易判定はやめた |
+| `oauth.js` | `backend/src/auth/oauth.ts` | スコープを `transition:generic` から必要な操作だけに絞った |
 
 ## 共通
 
@@ -51,7 +63,7 @@ frontend/              画面。開発時はモックでバックエンドなし
 | API | Hono 4 + `@hono/node-server` | 軽量で型が強い |
 | ログイン | `@atproto/oauth-client-node` | AT Protocol 公式の OAuth クライアント |
 | Bluesky API | `@atproto/api` | 投稿とプロフィールの取得、レコード書き込み |
-| DB | SQLite（better-sqlite3）+ Drizzle ORM | 初期版は 1 台で足りる。後で PostgreSQL に移せる |
+| DB | SQLite（Node.js 標準の `node:sqlite`） | 初期版は 1 台で足りる。ネイティブモジュールのビルドが要らない。表が少ないので ORM は使わず SQL を直接書く |
 | ジョブ | SQLite のジョブテーブルをワーカーが取得 | Redis などを増やさずに済む |
 | 描画関数の生成 | Claude API（`@anthropic-ai/sdk`、`claude-opus-5-5`） | コード生成の品質が高い |
 | 生成結果の検証 | Playwright + ヘッドレス Chromium | ギャラリーと同じブラウザ・同じ renderer で実行できる |
@@ -103,7 +115,7 @@ OAuth のスコープは必要な操作だけに絞る。
 |---|---|---|
 | 購読 | Jetstream（Node.js 標準の WebSocket） | `wantedCollections` で作品レコードだけを受け取れる |
 | API | Hono 4、Lexicon で定義した XRPC query | 他のクライアントからも使える |
-| DB | SQLite（better-sqlite3）+ Drizzle ORM | generator とは別のファイルにする |
+| DB | SQLite（`node:sqlite`） | generator とは別のファイルにする |
 | DID の解決 | `@atproto/identity` | DID からハンドル名と PDS を調べる |
 
 - Jetstream のカーソルを DB に保存し、再起動しても続きから受け取る。

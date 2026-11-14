@@ -3,10 +3,46 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { ClaudeConfig } from "../config.ts";
 import { buildUserMessage, SYSTEM_PROMPT } from "./prompt.ts";
-import type { GeneratedArtwork, GenerationInput, GenerationResult } from "./types.ts";
+import {
+  EMOTIONS,
+  TRAITS,
+  type Analysis,
+  type Emotion,
+  type GeneratedArtwork,
+  type GenerationInput,
+  type GenerationResult,
+} from "./types.ts";
+
+/**
+ * 感情と個性の推定。値の範囲は構造化出力のスキーマでは縛らず、受け取ってから丸める
+ * （toAnalysis）。
+ */
+const AnalysisOutput = z.object({
+  valence: z.number().int(),
+  arousal: z.number().int(),
+  dominant: z.enum(EMOTIONS),
+  mix: z.object({
+    joy: z.number().int(),
+    calm: z.number().int(),
+    excitement: z.number().int(),
+    nostalgia: z.number().int(),
+    sadness: z.number().int(),
+    anxiety: z.number().int(),
+    anger: z.number().int(),
+    neutral: z.number().int(),
+  }),
+  personality: z.object({
+    openness: z.number().int(),
+    conscientiousness: z.number().int(),
+    extraversion: z.number().int(),
+    agreeableness: z.number().int(),
+    neuroticism: z.number().int(),
+  }),
+});
 
 /** Claude に返させる形。params と state は中身が自由なので JSON 文字列で受け取る。 */
 const ModelOutput = z.object({
+  analysis: AnalysisOutput,
   title: z.string(),
   code: z.string(),
   paramsJson: z.string(),
@@ -45,6 +81,48 @@ function parseJsonObject(text: string, field: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+/** state のうち、生成側が書き込むキー。Claude が同じキーを返しても上書きする。 */
+export const RESERVED_STATE_KEYS = ["analysis", "features"] as const;
+
+const clampInt = (v: number, min: number, max: number) => Math.round(Math.min(max, Math.max(min, v)));
+
+/** 範囲外の値を丸め、感情の割合を合計 1000 にそろえる。 */
+export function toAnalysis(raw: z.infer<typeof AnalysisOutput>): Analysis {
+  const mix = Object.fromEntries(EMOTIONS.map((e) => [e, clampInt(raw.mix[e], 0, 1000)])) as Record<Emotion, number>;
+  const sum = EMOTIONS.reduce((a, e) => a + mix[e], 0);
+  if (sum === 0) {
+    mix.neutral = 1000;
+  } else {
+    for (const e of EMOTIONS) mix[e] = Math.round((mix[e] * 1000) / sum);
+    // 丸め誤差は最も大きい感情で吸収する
+    const top = EMOTIONS.reduce((a, b) => (mix[b] > mix[a] ? b : a));
+    mix[top] += 1000 - EMOTIONS.reduce((a, e) => a + mix[e], 0);
+  }
+  return {
+    valence: clampInt(raw.valence, -1000, 1000),
+    arousal: clampInt(raw.arousal, 0, 1000),
+    dominant: raw.dominant,
+    mix,
+    personality: Object.fromEntries(TRAITS.map((t) => [t, clampInt(raw.personality[t], 0, 1000)])) as Analysis["personality"],
+  };
+}
+
+/**
+ * AT Protocol のデータモデルは小数を扱えず、小数を含むレコードは PDS に拒否される。
+ * 保存前に見つけて、作り直しの対象にする。
+ */
+function assertNoFloats(value: unknown, path: string): void {
+  if (typeof value === "number") {
+    if (!Number.isInteger(value)) {
+      throw new GenerationError("invalid_output", `${path} に小数 ${value} があります（整数だけが使えます）`);
+    }
+  } else if (Array.isArray(value)) {
+    value.forEach((v, i) => assertNoFloats(v, `${path}[${i}]`));
+  } else if (typeof value === "object" && value !== null) {
+    for (const [k, v] of Object.entries(value)) assertNoFloats(v, `${path}.${k}`);
+  }
+}
+
 /** モデルの出力を、レコードに入れられる形に変換して基本的な検査をする。 */
 export function toGeneratedArtwork(output: ModelOutput): GeneratedArtwork {
   if (!/export\s+default\s+function/.test(output.code)) {
@@ -57,11 +135,17 @@ export function toGeneratedArtwork(output: ModelOutput): GeneratedArtwork {
   if (width < 1 || height < 1) {
     throw new GenerationError("invalid_output", `aspectRatio が不正です: ${width}:${height}`);
   }
+  const params = parseJsonObject(output.paramsJson, "paramsJson");
+  const state = parseJsonObject(output.stateJson, "stateJson");
+  assertNoFloats(params, "params");
+  assertNoFloats(state, "state");
+  for (const key of RESERVED_STATE_KEYS) delete state[key];
   return {
     title: output.title.trim(),
+    analysis: toAnalysis(output.analysis),
     code: output.code,
-    params: parseJsonObject(output.paramsJson, "paramsJson"),
-    state: parseJsonObject(output.stateJson, "stateJson"),
+    params,
+    state,
     animated: output.animated,
     aspectRatio: { width, height },
   };

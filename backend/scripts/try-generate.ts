@@ -9,6 +9,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadClaudeConfig } from "../src/config.ts";
+import { computeFeatures } from "../src/features/stats.ts";
 import { generateArtwork } from "../src/generation/claude.ts";
 import { buildArtworkRecord, type ArtworkRecord, type RecordRefs } from "../src/generation/record.ts";
 import type { GenerationInput, ProfileStats, SourcePost } from "../src/generation/types.ts";
@@ -48,7 +49,7 @@ if (previousPath) {
     previous: { uri: "at://did:plc:example/com.example.artsky.artwork/3m4example2a", cid: dummyCid },
   };
 } else {
-  input = { kind: "genesis", posts: fixture.posts, profile: fixture.profile };
+  input = { kind: "genesis", posts: fixture.posts, profile: fixture.profile, features: computeFeatures(fixture.posts) };
   refs = { kind: "genesis" };
 }
 

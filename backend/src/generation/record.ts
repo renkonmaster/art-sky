@@ -54,6 +54,20 @@ function postRange(posts: SourcePost[]): { oldestPostAt?: string; newestPostAt?:
   return { oldestPostAt: sorted[0], newestPostAt: sorted[sorted.length - 1] };
 }
 
+/**
+ * 次の作品に引き継ぐ state。Claude が返した自由な部分に、生成側が管理する 2 つを足す。
+ * - analysis：今回の感情と個性の推定
+ * - features：genesis で計算した投稿の特徴。evolution では前作品のものをそのまま引き継ぐ
+ */
+function buildState(input: GenerationInput, result: GenerationResult): Record<string, unknown> {
+  const features = input.kind === "genesis" ? input.features : input.previous.state.features;
+  return {
+    ...result.artwork.state,
+    analysis: result.artwork.analysis,
+    ...(features !== undefined ? { features } : {}),
+  };
+}
+
 /** 生成結果に、シード・参照・入力の要約を足して作品レコードにする。 */
 export function buildArtworkRecord(
   input: GenerationInput,
@@ -82,7 +96,7 @@ export function buildArtworkRecord(
       ...postRange(posts),
       profile: input.profile,
     },
-    state: artwork.state,
+    state: buildState(input, result),
     createdAt: (options.now ?? new Date()).toISOString(),
   };
 }
