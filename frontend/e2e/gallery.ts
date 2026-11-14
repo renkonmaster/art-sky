@@ -42,7 +42,7 @@ await server.listen();
 const base = "http://127.0.0.1:5199";
 const browser = await chromium.launch();
 try {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: "dark" });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: "dark", acceptDownloads: true });
   const page = await context.newPage();
   const problems: string[] = [];
   page.on("pageerror", (err) => problems.push(`pageerror: ${err.message}`));
@@ -179,6 +179,72 @@ try {
   await page.getByRole("button", { name: "ログアウト" }).click();
   await page.getByRole("link", { name: "ログイン" }).waitFor();
 
+  // ---- 名刺：自分の作品の絵を名刺の形にして保存する（アニメーション作品で確かめる） ----
+  // 他人の作品には名刺のボタンが出ない。
+  await page.goto(base);
+  await page.locator(".feed-art a").first().click();
+  await page.waitForSelector(".detail");
+  assert((await page.getByRole("link", { name: "この作品を名刺にする" }).count()) === 0, "未ログインで名刺のボタンが出ている");
+
+  await page.goto(`${base}/login`);
+  await page.getByLabel("ハンドル名").fill("mio.example.com");
+  await page.getByRole("button", { name: "Bluesky でログイン" }).click();
+  await page.waitForURL(/\/manage$/);
+  await page.getByRole("link", { name: "自分の作品", exact: true }).click();
+  await page.locator(".feed-art a").first().click();
+  await page.getByRole("link", { name: "この作品を名刺にする" }).click();
+  await page.waitForSelector('.card-canvas[data-ready="true"]', { timeout: 20_000 });
+
+  /** 名刺の大きさと、絵と文字が描かれていること（色の種類が十分あること）を調べる。 */
+  const inspect = () =>
+    page.evaluate(() => {
+      const canvas = document.querySelector<HTMLCanvasElement>(".card-canvas");
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) return null;
+      const colors = (x: number, y: number, w: number, h: number) => {
+        const data = ctx.getImageData(x, y, w, h).data;
+        const seen = new Set<number>();
+        for (let i = 0; i < data.length; i += 4 * 97) seen.add(((data[i] ?? 0) << 16) | ((data[i + 1] ?? 0) << 8) | (data[i + 2] ?? 0));
+        return seen.size;
+      };
+      const landscape = canvas.width > canvas.height;
+      return {
+        width: canvas.width,
+        height: canvas.height,
+        art: landscape ? colors(0, 0, 1000, canvas.height) : colors(0, 0, canvas.width, 1100),
+        panel: landscape ? colors(1000, 0, canvas.width - 1000, canvas.height) : colors(0, 1100, canvas.width, canvas.height - 1100),
+      };
+    });
+  const landscape = await inspect();
+  assert(landscape?.width === 1820 && landscape.height === 1100, "横向きの名刺が 1820 × 1100 ではない");
+  assert(landscape.art > 50, `名刺に絵が入っていない（色 ${landscape.art} 種類）`);
+  assert(landscape.panel > 5, `名刺に文字が入っていない（色 ${landscape.panel} 種類）`);
+  await shot(page, "card");
+
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "PNG で保存" }).click()]);
+  assert(/^art-sky-card-mio\.example\.com-.+\.png$/.test(download.suggestedFilename()), `ファイル名が ${download.suggestedFilename()}`);
+  const saved = path.join(outDir ?? (await import("node:os")).tmpdir(), "card-landscape.png");
+  await download.saveAs(saved);
+  const png = (await import("node:fs")).readFileSync(saved);
+  assert(png.subarray(1, 4).toString() === "PNG", "保存したファイルが PNG ではない");
+  assert(png.readUInt32BE(16) === 1820 && png.readUInt32BE(20) === 1100, "保存した PNG が 1820 × 1100 ではない");
+
+  await page.getByRole("button", { name: "縦", exact: true }).click();
+  await page.getByRole("button", { name: "白", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector<HTMLCanvasElement>(".card-canvas")?.width === 1100);
+  const portrait = await inspect();
+  assert(portrait?.height === 1820 && portrait.art > 50 && portrait.panel > 5, "縦向きの名刺が正しく描けていない");
+  await shot(page, "card-portrait");
+
+  // 他人の作品の名刺ページを直接開いても作れない。
+  const other = await (await page.request.get(`${base}/xrpc/com.example.artsky.gallery.listByActor?actor=kai.example.com&limit=1`)).json();
+  const [, otherDid, otherRkey] = (other.items[0].uri as string).match(/^at:\/\/([^/]+)\/[^/]+\/(.+)$/) ?? [];
+  await page.goto(`${base}/u/${otherDid}/${otherRkey}/card`);
+  await page.getByText("名刺にできるのは自分の作品だけです").waitFor();
+  await page.goto(`${base}/manage`);
+  await page.getByRole("button", { name: "ログアウト" }).click();
+  await page.getByRole("link", { name: "ログイン" }).waitFor();
+
   // ---- スマートフォン幅 ----
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(base);
@@ -193,9 +259,10 @@ try {
   await page.goto(`${base}/login`);
   await noHorizontalScroll(page, "ログイン");
 
-  const unexpected = problems.filter((p) => !p.includes("404"));
+  // willReadFrequently の警告は、この確認が名刺の画素を読み取ったことによるものなので除く。
+  const unexpected = problems.filter((p) => !p.includes("404") && !p.includes("willReadFrequently"));
   assert(unexpected.length === 0, `コンソールにエラーがある:\n${unexpected.join("\n")}`);
-  console.log("OK: ギャラリー（2 つの配置とスクロール）、作品詳細、個人ギャラリー、ログイン、初回登録、再試行、管理、スマートフォン幅を確認した");
+  console.log("OK: ギャラリー（2 つの配置とスクロール）、作品詳細、個人ギャラリー、ログイン、初回登録、再試行、管理、名刺の書き出し、スマートフォン幅を確認した");
 } finally {
   await browser.close();
   await server.close();

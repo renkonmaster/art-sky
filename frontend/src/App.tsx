@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./auth/AuthContext.tsx";
 import { Avatar } from "./components/Avatar.tsx";
 import { ActorPage } from "./pages/ActorPage.tsx";
 import { ArtworkPage } from "./pages/ArtworkPage.tsx";
+import { CardPage } from "./pages/CardPage.tsx";
 import { GalleryPage } from "./pages/GalleryPage.tsx";
 import { LoginPage } from "./pages/LoginPage.tsx";
 import { ManagePage } from "./pages/ManagePage.tsx";
@@ -17,6 +18,7 @@ export function App() {
           <Route path="/" element={<GalleryPage />} />
           <Route path="/u/:actor" element={<ActorPage />} />
           <Route path="/u/:did/:rkey" element={<ArtworkPage />} />
+          <Route path="/u/:did/:rkey/card" element={<CardPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/manage" element={<ManagePage />} />

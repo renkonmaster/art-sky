@@ -24,8 +24,14 @@ export interface RenderOptions {
   id: string;
   /** キャンバスの長辺の画素数。既定 720。 */
   renderSize?: number;
-  /** 静止画を描き終えたら PNG を親ページに渡す。既定 false。 */
+  /**
+   * 描き終えた絵を PNG にして親ページに渡す。既定 false。
+   * アニメーション作品では、snapshotFrame のフレームまで一気に進めた絵を渡し、そこで止める
+   * （時刻は 1 フレーム 1/60 秒として進めるので、何度取っても同じ絵になる）。
+   */
   snapshot?: boolean;
+  /** アニメーション作品のスナップショットを取るフレーム。既定 90（開始から 1.5 秒）。 */
+  snapshotFrame?: number;
   /** コードの読み込みと 1 回の描画に許す時間（ミリ秒）。超えたら止める。既定 5000。 */
   drawTimeoutMs?: number;
 }
@@ -75,7 +81,7 @@ const WORKER_SOURCE = `
 const mulberry32 = ${mulberry32.toString()};
 const post = (m) => self.postMessage(m);
 self.onmessage = async (e) => {
-  const { canvas, codeUrl, seed, params, animated, snapshot } = e.data;
+  const { canvas, codeUrl, seed, params, animated, snapshot, snapshotFrame } = e.data;
   try {
     post({ type: "begin" });
     const mod = await import(codeUrl);
@@ -83,8 +89,13 @@ self.onmessage = async (e) => {
     if (typeof draw !== "function") throw new Error("default export is not a function");
     const ctx = canvas.getContext("2d");
     const env = { width: canvas.width, height: canvas.height, params, random: mulberry32(seed), frame: 0, time: 0 };
-    if (!animated) {
-      draw(ctx, env);
+    if (!animated || snapshot) {
+      const last = animated ? snapshotFrame : 0;
+      for (let f = 0; f <= last; f++) {
+        env.frame = f;
+        env.time = f / 60;
+        draw(ctx, env);
+      }
       const blob = snapshot ? await canvas.convertToBlob({ type: "image/png" }) : null;
       post({ type: "frame", frame: 0, blob });
       return;
@@ -154,7 +165,7 @@ try {
   };
   const offscreen = canvas.transferControlToOffscreen();
   worker.postMessage(
-    { canvas: offscreen, codeUrl: blobUrl(cfg.code), seed: cfg.seed, params: cfg.params, animated: cfg.animated, snapshot: cfg.snapshot },
+    { canvas: offscreen, codeUrl: blobUrl(cfg.code), seed: cfg.seed, params: cfg.params, animated: cfg.animated, snapshot: cfg.snapshot, snapshotFrame: cfg.snapshotFrame },
     [offscreen],
   );
 } catch (err) {
@@ -187,6 +198,7 @@ export function buildSrcdoc(artwork: RenderableArtwork, options: RenderOptions):
     seed: artwork.seed,
     animated: artwork.renderer.animated === true,
     snapshot: options.snapshot === true,
+    snapshotFrame: Math.max(0, Math.floor(options.snapshotFrame ?? 90)),
     drawTimeoutMs: options.drawTimeoutMs ?? 5000,
     width: size.width,
     height: size.height,

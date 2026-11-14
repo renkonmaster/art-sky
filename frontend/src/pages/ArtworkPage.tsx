@@ -2,6 +2,7 @@ import { ArtworkRecord } from "@art-sky/api";
 import { Link, useParams } from "react-router";
 import { callApi } from "../api/client.ts";
 import { useLoad } from "../api/useApi.ts";
+import { useAuth } from "../auth/AuthContext.tsx";
 import { ArtworkFrame } from "../components/ArtworkFrame.tsx";
 import { Avatar } from "../components/Avatar.tsx";
 import { ErrorNote, Loading } from "../components/States.tsx";
@@ -13,6 +14,7 @@ export function ArtworkPage() {
   const { did = "", rkey = "" } = useParams();
   const uri = artworkUri(did, rkey);
   const state = useLoad((signal) => callApi("getArtwork", { query: { uri }, signal }), [uri]);
+  const { user } = useAuth();
 
   if (state.status === "loading") return <Loading />;
   if (state.status === "error") return <ErrorNote error={state.error} notFound="作品が見つかりませんでした。" />;
@@ -60,6 +62,13 @@ export function ArtworkPage() {
               </>
             ) : null}
           </dl>
+        ) : null}
+        {user?.did === artwork.author.did ? (
+          <p className="actions">
+            <Link className="button primary" to={`${artworkPath(artwork.uri)}/card`}>
+              この作品を名刺にする
+            </Link>
+          </p>
         ) : null}
         <nav className="detail-nav" aria-label="前後の作品">
           {previous ? (
