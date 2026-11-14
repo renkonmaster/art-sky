@@ -7,7 +7,7 @@ import { RequireAuth } from "../auth/RequireAuth.tsx";
 import { ErrorNote, Loading } from "../components/States.tsx";
 import { useArtworkSnapshot } from "../components/useArtworkSnapshot.tsx";
 import { artworkPath, artworkUri } from "../lib/atUri.ts";
-import { type CardOrientation, type CardTheme, canvasToPng, cardSize, drawCard } from "../lib/card.ts";
+import { type CardOrientation, type CardTheme, canvasToPng, cardSize, drawCard, loadAvatar } from "../lib/card.ts";
 
 /** 名刺：自分の作品の絵を名刺の形に加工して、画像として書き出す。 */
 export function CardPage() {
@@ -35,9 +35,15 @@ const ORIENTATIONS: ReadonlyArray<{ value: CardOrientation; label: string }> = [
   { value: "portrait", label: "縦" },
 ];
 const THEMES: ReadonlyArray<{ value: CardTheme; label: string }> = [
-  { value: "dark", label: "黒" },
   { value: "light", label: "白" },
+  { value: "dark", label: "黒" },
 ];
+
+/** この作品が何作目か（1 始まり）と、これまでの作品数。 */
+interface Position {
+  number: number;
+  works: number;
+}
 
 function CardEditor({ view }: { view: ArtworkView }) {
   const record = useMemo(() => {
@@ -47,7 +53,7 @@ function CardEditor({ view }: { view: ArtworkView }) {
   const { frame, state } = useArtworkSnapshot(record, 1600);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [orientation, setOrientation] = useState<CardOrientation>("landscape");
-  const [theme, setTheme] = useState<CardTheme>("dark");
+  const [theme, setTheme] = useState<CardTheme>("light");
   const [drawn, setDrawn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,12 +62,60 @@ function CardEditor({ view }: { view: ArtworkView }) {
   const title = record?.title ?? "無題";
   const image = state.status === "ready" ? state.image : null;
 
+  // 何作目かは、その人の作品の一覧から数える。取れなくても名刺は作れる（番号を省く）。
+  const [position, setPosition] = useState<Position | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    callApi("listByActor", { query: { actor: view.author.did, limit: 100 } }).then(
+      (page) => {
+        // 一覧は新しい順。続きがある（100 件を超える）ときは数えきれないので省く。
+        const index = page.items.findIndex((item) => item.uri === view.uri);
+        if (!cancelled && index >= 0 && !page.cursor) {
+          setPosition({ number: page.items.length - index, works: page.items.length });
+        }
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [view.author.did, view.uri]);
+
+  // アバターは読み込めたときだけ使う。undefined は読み込み中。
+  const [avatar, setAvatar] = useState<ImageBitmap | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    void loadAvatar(view.author.avatar).then((bitmap) => {
+      if (!cancelled) setAvatar(bitmap);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [view.author.avatar]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !image || !record) return;
-    drawCard(canvas, { image, name, handle: view.author.handle, title, createdAt: record.createdAt }, { orientation, theme });
+    if (!canvas || !image || !record || avatar === undefined) return;
+    drawCard(
+      canvas,
+      {
+        image,
+        avatar,
+        name,
+        handle: view.author.handle,
+        title,
+        createdAt: record.createdAt,
+        serial: view.uri.split("/").at(-1) ?? "",
+        number: position?.number,
+        works: position?.works,
+        postsCount: record.inputs?.profile?.postsCount,
+        animated: record.renderer.animated,
+        profileUrl: `https://bsky.app/profile/${view.author.handle}`,
+      },
+      { orientation, theme },
+    );
     setDrawn(true);
-  }, [image, record, name, title, view.author.handle, orientation, theme]);
+  }, [image, avatar, position, record, name, title, view.author.handle, view.uri, orientation, theme]);
 
   const download = async () => {
     const canvas = canvasRef.current;
@@ -102,7 +156,7 @@ function CardEditor({ view }: { view: ArtworkView }) {
           width={size.width}
           height={size.height}
           role="img"
-          aria-label={`${name}の名刺。作品「${title}」の絵が入っています`}
+          aria-label={`${name}の名刺。背景は作品「${title}」の絵で、Bluesky のプロフィールへの QR コードが入っています`}
         />
         {state.status === "drawing" ? <p className="card-note">作品を描いています…</p> : null}
         {state.status === "error" || !record ? (
@@ -137,7 +191,7 @@ function CardEditor({ view }: { view: ArtworkView }) {
         </p>
       ) : null}
       <p className="muted card-meta">
-        {size.width} × {size.height} 画素（名刺と同じ 91 × 55 mm の比率）。
+        {size.width} × {size.height} 画素（名刺と同じ 91 × 55 mm の比率）。QR コードは Bluesky のプロフィールを開きます。
         {record?.renderer.animated ? "アニメーション作品は、開始から 1.5 秒の時点の絵を使います。" : ""}
       </p>
       {frame}

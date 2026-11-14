@@ -195,30 +195,45 @@ try {
   await page.getByRole("link", { name: "この作品を名刺にする" }).click();
   await page.waitForSelector('.card-canvas[data-ready="true"]', { timeout: 20_000 });
 
-  /** 名刺の大きさと、絵と文字が描かれていること（色の種類が十分あること）を調べる。 */
+  /** 名刺の大きさと、背景の絵・文字・QR コードが描かれていることを調べる。 */
   const inspect = () =>
     page.evaluate(() => {
       const canvas = document.querySelector<HTMLCanvasElement>(".card-canvas");
       const ctx = canvas?.getContext("2d");
       if (!canvas || !ctx) return null;
+      const landscape = canvas.width > canvas.height;
       const colors = (x: number, y: number, w: number, h: number) => {
         const data = ctx.getImageData(x, y, w, h).data;
         const seen = new Set<number>();
         for (let i = 0; i < data.length; i += 4 * 97) seen.add(((data[i] ?? 0) << 16) | ((data[i + 1] ?? 0) << 8) | (data[i + 2] ?? 0));
         return seen.size;
       };
-      const landscape = canvas.width > canvas.height;
+      // QR コードの札（位置は src/lib/card.ts の LAYOUTS）。白と黒の両方がたくさんあるはず。
+      const qr = landscape ? { x: 1820 - 96 - 324, y: 664 } : { x: 1100 - 96 - 280, y: 1420 };
+      const data = ctx.getImageData(qr.x, qr.y, 280, 280).data;
+      let dark = 0;
+      let white = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const v = (data[i] ?? 0) + (data[i + 1] ?? 0) + (data[i + 2] ?? 0);
+        if (v < 80) dark++;
+        else if (v > 740) white++;
+      }
       return {
         width: canvas.width,
         height: canvas.height,
-        art: landscape ? colors(0, 0, 1000, canvas.height) : colors(0, 0, canvas.width, 1100),
-        panel: landscape ? colors(1000, 0, canvas.width - 1000, canvas.height) : colors(0, 1100, canvas.width, canvas.height - 1100),
+        // 背景の絵は四隅まで敷かれている（単色ではない）。
+        corners: [
+          colors(0, 0, 300, 200),
+          colors(canvas.width - 300, canvas.height - 200, 300, 200),
+        ],
+        qrDark: dark / (280 * 280),
+        qrWhite: white / (280 * 280),
       };
     });
   const landscape = await inspect();
   assert(landscape?.width === 1820 && landscape.height === 1100, "横向きの名刺が 1820 × 1100 ではない");
-  assert(landscape.art > 50, `名刺に絵が入っていない（色 ${landscape.art} 種類）`);
-  assert(landscape.panel > 5, `名刺に文字が入っていない（色 ${landscape.panel} 種類）`);
+  assert(landscape.corners.every((n) => n > 20), `背景に絵が敷かれていない（色 ${landscape.corners.join(", ")} 種類）`);
+  assert(landscape.qrDark > 0.2 && landscape.qrWhite > 0.3, `QR コードが描かれていない（黒 ${landscape.qrDark} 白 ${landscape.qrWhite}）`);
   await shot(page, "card");
 
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "PNG で保存" }).click()]);
@@ -230,11 +245,12 @@ try {
   assert(png.readUInt32BE(16) === 1820 && png.readUInt32BE(20) === 1100, "保存した PNG が 1820 × 1100 ではない");
 
   await page.getByRole("button", { name: "縦", exact: true }).click();
-  await page.getByRole("button", { name: "白", exact: true }).click();
+  await page.getByRole("button", { name: "黒", exact: true }).click();
   await page.waitForFunction(() => document.querySelector<HTMLCanvasElement>(".card-canvas")?.width === 1100);
   const portrait = await inspect();
-  assert(portrait?.height === 1820 && portrait.art > 50 && portrait.panel > 5, "縦向きの名刺が正しく描けていない");
-  await shot(page, "card-portrait");
+  assert(portrait?.height === 1820 && portrait.qrDark > 0.2 && portrait.qrWhite > 0.3, "縦向きの名刺が正しく描けていない");
+  const [download2] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "PNG で保存" }).click()]);
+  await download2.saveAs(path.join(outDir ?? (await import("node:os")).tmpdir(), "card-portrait-dark.png"));
 
   // 他人の作品の名刺ページを直接開いても作れない。
   const other = await (await page.request.get(`${base}/xrpc/com.example.artsky.gallery.listByActor?actor=kai.example.com&limit=1`)).json();
