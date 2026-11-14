@@ -77,12 +77,16 @@ function RegisterForm({ handle, registered }: { handle: string; registered: bool
         <dd>Bluesky に投稿するたびに、その投稿と直前の作品を同じ送り先に送ります</dd>
         <dt>作品の保存先</dt>
         <dd>あなたの Bluesky のデータ置き場（PDS）に公開のレコードとして保存し、ギャラリーに掲載します</dd>
+        <dt>公開されるもの</dt>
+        <dd>
+          作品のほかに、投稿から推定した感情や性格の傾向と、投稿の時間帯や頻度などの特徴が、作品のレコードに入って誰でも読める状態になります
+        </dd>
       </dl>
       <p className="muted">生成の停止とギャラリーへの掲載は、あとから管理画面で変えられます。</p>
       <form className="form" onSubmit={(event) => void onSubmit(event)}>
         <label className="check">
           <input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} />
-          <span>上の内容を外部の AI に送ることに同意します</span>
+          <span>投稿を外部の AI に送ることと、推定結果が作品と一緒に公開されることに同意します</span>
         </label>
         {error ? (
           <p className="form-error" role="alert">

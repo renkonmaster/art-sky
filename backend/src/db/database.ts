@@ -36,6 +36,25 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS jobs_did ON jobs (did, id);
 CREATE INDEX IF NOT EXISTS jobs_status ON jobs (status, id);
 
+-- ギャラリー用の索引。作品の正本は本人の PDS にあり、ここはその写し（PDS から作り直せる）。
+CREATE TABLE IF NOT EXISTS artworks (
+  uri        TEXT PRIMARY KEY,
+  did        TEXT NOT NULL,
+  rkey       TEXT NOT NULL,
+  cid        TEXT NOT NULL,
+  -- com.example.artsky.artwork のレコード（JSON）
+  record     TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  indexed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS artworks_did ON artworks (did, rkey);
+
+-- 小さな設定値の置き場（Jetstream のカーソルなど）
+CREATE TABLE IF NOT EXISTS kv (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS oauth_states (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,
@@ -49,6 +68,16 @@ CREATE TABLE IF NOT EXISTS oauth_sessions (
 );
 `;
 
+/** 後から足した列。既存の DB にも追加する。 */
+const ADDED_COLUMNS: ReadonlyArray<[table: string, column: string, definition: string]> = [
+  ["users", "display_name", "TEXT"],
+  ["users", "avatar", "TEXT"],
+  // evolution のきっかけになった投稿の CID
+  ["jobs", "trigger_cid", "TEXT"],
+  // 失敗の種類（docs/api.md の JobErrorCode）
+  ["jobs", "error_code", "TEXT"],
+];
+
 export type Database = DatabaseSync;
 
 /** path に ":memory:" を渡すとメモリ上の DB になる（テスト用）。 */
@@ -56,6 +85,10 @@ export function openDatabase(path: string): Database {
   const db = new DatabaseSync(path);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
   db.exec(SCHEMA);
+  for (const [table, column, definition] of ADDED_COLUMNS) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
   return db;
 }
 

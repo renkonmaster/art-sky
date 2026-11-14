@@ -1,0 +1,165 @@
+{
+  "$type": "com.example.artsky.artwork",
+  "kind": "genesis",
+  "renderer": {
+    "runtime": "canvas2d",
+    "version": "1",
+    "animated": true
+  },
+  "code": "let S=null;\nfunction build(env){const W=env.width,H=env.height,P=env.params,r=env.random;const hy=H*P.horizon/1000;const ridges=[];for(let j=0;j<2;j++){const pts=[];let h=0.5+r()*0.3;for(let i=0;i<=60;i++){h+=(r()-0.5)*0.12;h=Math.max(0.15,Math.min(1,h));pts.push(h)}ridges.push(pts)}const lamps=[];for(let i=0;i<P.lampCount;i++){const x=W*(0.06+0.88*(i+0.5)/P.lampCount)+(r()-0.5)*W*0.04;lamps.push({x:x,h:H*(0.05+r()*0.02),ph:r()*6.28,c:P.lamp[Math.floor(r()*P.lamp.length)]})}const leaves=[];for(let i=0;i<P.leafCount;i++){leaves.push({x:r()*W,y:r()*H,v:H*(0.02+r()*0.04),ph:r()*6.28,s:W*(0.006+r()*0.008),c:P.autumn[Math.floor(r()*P.autumn.length)],rot:r()*6.28})}const rain=[];for(let i=0;i<P.rainCount;i++){rain.push({x:r()*W*1.2,y:r()*H,l:H*(0.02+r()*0.03),v:H*(0.5+r()*0.4)})}const stars=[];for(let i=0;i<P.starCount;i++){stars.push({x:r()*W,y:r()*hy*0.7,ph:r()*6.28,s:0.5+r()*1.2})}return{W:W,H:H,hy:hy,ridges:ridges,lamps:lamps,leaves:leaves,rain:rain,stars:stars}}\nexport default function draw(ctx,env){const P=env.params;if(!S||S.W!==env.width||S.H!==env.height)S=build(env);const W=S.W,H=S.H,hy=S.hy,t=env.time*P.speed/1000;ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;let g=ctx.createLinearGradient(0,0,0,hy);g.addColorStop(0,P.sky[0]);g.addColorStop(0.7,P.sky[1]);g.addColorStop(1,P.sky[2]);ctx.fillStyle=g;ctx.fillRect(0,0,W,hy+1);ctx.fillStyle='#fff';for(const s of S.stars){ctx.globalAlpha=0.25+0.25*Math.sin(t*0.8+s.ph);ctx.fillRect(s.x,s.y,s.s,s.s)}for(let j=0;j<2;j++){const pts=S.ridges[j];const top=hy-H*(j?0.08:0.16);ctx.beginPath();ctx.moveTo(0,hy);for(let i=0;i<=60;i++){ctx.lineTo(W*i/60,hy-(hy-top)*pts[i])}ctx.lineTo(W,hy);ctx.closePath();const rg=ctx.createLinearGradient(0,0,W,0);rg.addColorStop(0,P.autumn[0]);rg.addColorStop(0.5,P.autumn[1]);rg.addColorStop(1,P.autumn[2]);ctx.globalAlpha=1;ctx.fillStyle=j?P.ridge[1]:P.ridge[0];ctx.fill();ctx.globalAlpha=(j?P.autumnGlow*0.6:P.autumnGlow)/1000;ctx.fillStyle=rg;ctx.fill()}ctx.globalAlpha=1;g=ctx.createLinearGradient(0,hy,0,H);g.addColorStop(0,P.water[0]);g.addColorStop(1,P.water[1]);ctx.fillStyle=g;ctx.fillRect(0,hy,W,H-hy);ctx.fillStyle=P.bank;ctx.fillRect(0,hy-H*0.006,W,H*0.012);ctx.globalCompositeOperation='lighter';const amp=P.rippleAmp/1000*W*0.01;const step=H*0.018;const n=Math.floor((H-hy)/step);for(const L of S.lamps){ctx.fillStyle=L.c;for(let k=0;k<n;k++){const y=hy+H*0.008+k*step;const w=W*0.008*(1+k*0.18);const off=Math.sin(t*1.3+k*0.9+L.ph)*amp*(1+k*0.15)+Math.sin(t*0.7+k*1.7)*amp*0.5;ctx.globalAlpha=Math.max(0,0.55-k*0.55/n)*(0.7+0.3*Math.sin(t*2+k+L.ph));ctx.fillRect(L.x-w/2+off,y,w,step*0.45)}}ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;for(const L of S.lamps){const top=hy-L.h;ctx.strokeStyle=P.bank;ctx.lineWidth=Math.max(1,W*0.0025);ctx.beginPath();ctx.moveTo(L.x,hy);ctx.lineTo(L.x,top);ctx.stroke();const rad=W*0.035*(1+0.05*Math.sin(t+L.ph));const rg=ctx.createRadialGradient(L.x,top,0,L.x,top,rad);rg.addColorStop(0,'#fff8e0');rg.addColorStop(0.15,L.c);rg.addColorStop(1,'rgba(0,0,0,0)');ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.8;ctx.fillStyle=rg;ctx.fillRect(L.x-rad,top-rad,rad*2,rad*2);ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1}ctx.strokeStyle=P.rainColor;ctx.lineWidth=1;ctx.globalAlpha=P.rainAlpha/1000;ctx.beginPath();for(const d of S.rain){const y=(d.y+t*d.v)%H;const x=d.x-y*0.15;ctx.moveTo(x,y);ctx.lineTo(x-d.l*0.15,y+d.l)}ctx.stroke();for(const l of S.leaves){const y=(l.y+t*l.v)%(H*1.05)-H*0.025;const x=l.x+Math.sin(t*0.9+l.ph+y*0.01)*W*0.03;ctx.save();ctx.translate(x,y);ctx.rotate(l.rot+t*0.6+Math.sin(t+l.ph));ctx.globalAlpha=y>hy?0.55:0.85;ctx.fillStyle=l.c;ctx.beginPath();ctx.ellipse(0,0,l.s,l.s*0.5,0,0,6.2832);ctx.fill();ctx.restore()}ctx.globalAlpha=1}\n",
+  "params": {
+    "sky": [
+      "#0b1030",
+      "#1c2350",
+      "#3a3460"
+    ],
+    "water": [
+      "#141a3a",
+      "#05070f"
+    ],
+    "ridge": [
+      "#1a1a33",
+      "#0f0f22"
+    ],
+    "bank": "#07080f",
+    "autumn": [
+      "#c8402c",
+      "#e08a2e",
+      "#e8c547",
+      "#a8322a"
+    ],
+    "lamp": [
+      "#ffcf7a",
+      "#ffb35c",
+      "#ffe2a0"
+    ],
+    "rainColor": "#9fb4e0",
+    "autumnGlow": 420,
+    "horizon": 470,
+    "lampCount": 9,
+    "leafCount": 38,
+    "rainCount": 70,
+    "rainAlpha": 90,
+    "starCount": 40,
+    "rippleAmp": 700,
+    "speed": 1000
+  },
+  "seed": 1776051317,
+  "aspectRatio": {
+    "width": 4,
+    "height": 5
+  },
+  "title": "水面に揺れる灯り",
+  "generator": {
+    "id": "artsky-claude",
+    "version": "0.1.0",
+    "model": "claude-opus-5-5"
+  },
+  "inputs": {
+    "postsSampled": 8,
+    "oldestPostAt": "2026-11-08T01:15:00.000Z",
+    "newestPostAt": "2026-11-13T22:41:00.000Z",
+    "profile": {
+      "postsCount": 2841,
+      "followersCount": 312,
+      "followsCount": 198,
+      "accountCreatedAt": "2023-05-02T09:14:00.000Z"
+    }
+  },
+  "state": {
+    "pieces": 1,
+    "title": "水面に揺れる灯り",
+    "language": "ja",
+    "structure": "night sky over twin autumn-tinted mountain ridges, riverbank horizon at 47%, row of streetlamps with glows, shimmering lamp reflections as stacked wobbling bars on dark water, faint slanted rain, drifting autumn leaves",
+    "motifs": [
+      "streetlamp reflections on river",
+      "autumn red-yellow gradient on ridges",
+      "falling leaves",
+      "soft rain",
+      "stars"
+    ],
+    "palette": {
+      "sky": "deep indigo",
+      "lamps": "warm amber",
+      "autumn": "red/orange/yellow"
+    },
+    "themes": [
+      "night walks",
+      "rain and books",
+      "seasons turning",
+      "ambient music",
+      "quiet satisfaction of coding",
+      "friends and laughter"
+    ],
+    "evolutionIdeas": "new posts can add lamps, shift season (winter: fewer leaves, snow instead of rain), warm the palette for joyful posts, increase ripple for energetic ones",
+    "aspect": "4:5",
+    "animated": true,
+    "analysis": {
+      "valence": 550,
+      "arousal": 290,
+      "dominant": "calm",
+      "mix": {
+        "joy": 220,
+        "calm": 380,
+        "excitement": 60,
+        "nostalgia": 180,
+        "sadness": 50,
+        "anxiety": 40,
+        "anger": 0,
+        "neutral": 70
+      },
+      "personality": {
+        "openness": 720,
+        "conscientiousness": 600,
+        "extraversion": 420,
+        "agreeableness": 660,
+        "neuroticism": 380
+      }
+    },
+    "features": {
+      "postsAnalyzed": 8,
+      "spanDays": 6,
+      "postsPerDayX100": 136,
+      "activity": 218,
+      "peakMinute": 375,
+      "hourHistogram": [
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1,
+        1,
+        1,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "hourSpread": 654,
+      "avgLength": 31,
+      "exclaim": 0,
+      "question": 0,
+      "emoji": 0,
+      "media": 0,
+      "link": 0,
+      "avgLikesX100": 0,
+      "maxLikes": 0,
+      "langCount": 0,
+      "vocabDiversity": 912
+    }
+  },
+  "createdAt": "2026-11-14T08:34:10.722Z"
+}

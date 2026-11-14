@@ -3,9 +3,15 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.18.0",
-  "engines": { "node": ">=26" },
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "dev": "pnpm --parallel -r --if-present run dev:service",
+    "dev:mock": "pnpm --filter @art-sky/frontend dev:mock",
+    "build": "pnpm --filter @art-sky/frontend build",
+    "start": "pnpm --filter @art-sky/backend start"
   }
 }

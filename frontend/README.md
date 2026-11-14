@@ -6,21 +6,23 @@
 
 ```sh
 pnpm install
-cd frontend
-pnpm dev        # http://127.0.0.1:5173 を開く
+pnpm dev        # リポジトリの直下で。backend と frontend を起動する
 ```
 
-バックエンドがなくても、開発サーバーに組み込んだモックで動く。
+<http://127.0.0.1:5173> を開く。画面は本物のバックエンドにつながり、作品は Claude が生成して PDS に保存した描画関数をそのまま実行して表示する。
 
-| コマンド | 内容 |
+| コマンド（frontend/ で） | 内容 |
 |---|---|
-| `pnpm dev` | モックで起動する |
-| `BACKEND_URL=http://127.0.0.1:3000 pnpm dev` | 本物のバックエンドに転送して起動する |
+| `pnpm dev` | 開発サーバー。API は `http://127.0.0.1:3000` の backend に転送する |
+| `BACKEND_URL=http://example:3000 pnpm dev` | 別の場所の backend に転送する |
+| `pnpm dev:mock` | backend なしで、架空のデータ（モック）で画面だけ動かす |
+| `pnpm build` | 本番用にビルドする（backend が `dist/` を配る） |
 | `pnpm test` | モックのテスト |
-| `pnpm e2e` | 実際のブラウザ（Chromium）で画面を確認する。`pnpm e2e <フォルダ>` でスクリーンショットも保存する |
+| `pnpm e2e` | モックを使い、実際のブラウザ（Chromium）で画面を確認する。`pnpm e2e <フォルダ>` でスクリーンショットも保存する |
 | `pnpm typecheck` | 型チェック |
 
 `pnpm e2e` が Chromium を見つけられないときは `pnpm exec playwright install chromium` を実行する。
+本物の backend とつないだ確認は、backend 側の `pnpm e2e` で行う。
 
 ## 画面
 
@@ -73,7 +75,8 @@ pnpm dev        # http://127.0.0.1:5173 を開く
 
 ## モック
 
-[mock/](mock/) にある。`docs/api.md` の API をすべてメモリ上で再現する。
+`pnpm dev:mock` のときだけ使う。[mock/](mock/) にあり、`docs/api.md` の API をすべてメモリ上で再現する。
+画面だけを素早く触るためのもので、作品も手書きの描画関数（`mock/styles/`）。ふだんの `pnpm dev` とビルドした画面では使わない。
 
 - 参加者 8 人と作品 24 件が最初から入っている（すべて架空）。作品のコードは `mock/styles/*.js`。
 - `/oauth/login?handle=<ハンドル名>` を開くと、そのハンドル名でログインした状態になる。

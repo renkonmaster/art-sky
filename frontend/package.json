@@ -7,7 +7,9 @@
     "build": "vite build",
     "typecheck": "tsc -p .",
     "test": "vitest run",
-    "e2e": "node e2e/gallery.ts"
+    "e2e": "node e2e/gallery.ts",
+    "dev:service": "vite",
+    "dev:mock": "MOCK=1 vite"
   },
   "dependencies": {
     "@art-sky/api": "workspace:*",

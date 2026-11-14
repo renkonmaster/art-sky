@@ -10,8 +10,8 @@ beforeEach(() => {
   const db = openDatabase(":memory:");
   jobs = createJobRepository(db);
   users = createUserRepository(db);
-  users.touch("did:a", "a.test");
-  users.touch("did:b", "b.test");
+  users.touch("did:a", { handle: "a.test" });
+  users.touch("did:b", { handle: "b.test" });
 });
 
 describe("ジョブ", () => {

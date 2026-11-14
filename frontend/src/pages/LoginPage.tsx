@@ -6,6 +6,7 @@ import { Loading } from "../components/States.tsx";
 const ERROR_TEXT: Record<string, string> = {
   invalid_handle: "ハンドル名を確認してください。",
   access_denied: "Bluesky での許可が取り消されました。",
+  failed: "認証を完了できませんでした。",
 };
 
 /** サイト内のパスだけを戻り先として受け付ける。 */

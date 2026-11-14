@@ -171,6 +171,12 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^1.8.0
         version: 1.8.0(zod@4.6.7)
+      '@art-sky/api':
+        specifier: workspace:*
+        version: link:../packages/api
+      '@art-sky/renderer':
+        specifier: workspace:*
+        version: link:../packages/renderer
       '@atproto/api':
         specifier: 0.30.0
         version: 0.30.0
@@ -193,6 +199,9 @@ importers:
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
+      playwright:
+        specifier: 1.65.0
+        version: 1.65.0
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

@@ -85,7 +85,10 @@ export const FINISHED_JOB_STATUSES: readonly JobStatus[] = ["done", "failed"];
 
 // ---- 初回登録 ----
 
-/** POST /api/register。投稿履歴を Claude（外部 AI）に送ることへの同意が必須。 */
+/**
+ * POST /api/register。
+ * 投稿履歴を Claude（外部 AI）に送ることと、推定結果（感情や性格の傾向）が作品と一緒に公開されることへの同意が必須。
+ */
 export const RegisterRequest = z.object({
   consent: z.object({
     externalAi: z.literal(true),

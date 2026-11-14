@@ -11,7 +11,8 @@ import { createOAuthStores } from "../db/oauthStores.ts";
 import { ARTWORK_COLLECTION } from "../generation/record.ts";
 
 /** 必要な操作だけに絞る（docs/tech-stack.md「ログインの権限」） */
-export const SCOPE = ["atproto", "repo:app.bsky.feed.post?action=create", `repo:${ARTWORK_COLLECTION}`].join(" ");
+/** このサイトからは投稿しないので、作品レコードの読み書きだけを求める。 */
+export const SCOPE = ["atproto", `repo:${ARTWORK_COLLECTION}`].join(" ");
 
 /**
  * トークンの更新を同じキーごとに 1 つずつ行うロック。API とワーカーが同じ人のセッションを

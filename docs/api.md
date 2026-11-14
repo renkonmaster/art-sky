@@ -56,7 +56,8 @@ ISO 8601 の文字列（例：`2026-11-14T07:31:00.000Z`）。
 | POST | `/oauth/logout` | セッションを消して 204 を返す |
 
 - `returnTo` は `/` で始まるサイト内のパスだけ受け付ける（既定は `/`）。
-- ログインに失敗したら `/login?error=<理由>` へリダイレクトする。
+- ログインに失敗したら `/login?error=<理由>` へリダイレクトする。理由は `invalid_handle`（ハンドル名が見つからない）、`access_denied`（許可が取り消された）、`failed`（その他）。
+- 求める権限は、作品レコード（`com.example.artsky.artwork`）の読み書きだけ。投稿の権限は求めない。
 - セッション Cookie は HttpOnly、SameSite=Lax。
 
 ## 内部 API
@@ -73,7 +74,7 @@ ISO 8601 の文字列（例：`2026-11-14T07:31:00.000Z`）。
 
 ### 初回登録
 
-- 投稿履歴を外部 AI（Claude）に送るため、`consent.externalAi: true` がないと受け付けない。
+- 投稿履歴を外部 AI（Claude）に送り、推定結果（感情や性格の傾向）が作品と一緒に公開されるため、`consent.externalAi: true` がないと受け付けない。
 - 直近 100 件の投稿と、総投稿数などの統計を取得して genesis ジョブを作る。
 - 登録済みなら 409 `AlreadyRegistered`。最初の作品の生成に失敗した場合は、登録し直すのではなくジョブを再試行する。
 

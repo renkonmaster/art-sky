@@ -37,6 +37,7 @@ async function noHorizontalScroll(page: Page, where: string): Promise<void> {
   assert(overflow <= 0, `${where} で横スクロールが出ている（${overflow}px）`);
 }
 
+process.env.MOCK = "1"; // この確認は、架空のデータ（mock/）で画面だけを確かめる
 const server = await createServer({ server: { port: 5199, strictPort: true }, logLevel: "warn" });
 await server.listen();
 const base = "http://127.0.0.1:5199";

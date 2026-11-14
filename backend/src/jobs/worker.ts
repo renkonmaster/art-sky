@@ -4,16 +4,36 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { GenerationError } from "../generation/claude.ts";
+import type { JobErrorCode } from "./repository.ts";
 import { JobError, runJob, type RunnerDeps } from "./runner.ts";
 
-/** 利用者に見せるエラー文。内部の詳細はログにだけ出す。 */
-function describeError(err: unknown): string {
-  if (err instanceof JobError) return err.message;
-  if (err instanceof GenerationError) return `生成に失敗しました（${err.reason}）: ${err.message}`;
-  if (err instanceof Anthropic.RateLimitError) return "Claude API の利用上限に達しました。時間をおいて再試行してください";
-  if (err instanceof Anthropic.APIError) return `Claude API のエラー（${err.status ?? "接続エラー"}）`;
-  if (err instanceof Error) return err.message;
-  return String(err);
+/** セッションを復元できなかった（ログインし直しが必要）。 */
+export class SessionExpiredError extends Error {
+  override name = "SessionExpiredError";
+}
+
+/** 利用者に見せるエラーの種類と文。内部の詳細はログにだけ出す。 */
+export function describeError(err: unknown): { code: JobErrorCode; message: string } {
+  if (err instanceof JobError) return { code: err.code, message: err.message };
+  if (err instanceof SessionExpiredError) {
+    return { code: "auth_expired", message: "ログインの有効期限が切れました。ログインし直してから再試行してください" };
+  }
+  if (err instanceof GenerationError) {
+    return {
+      code: err.reason === "refusal" ? "refusal" : "invalid_output",
+      message: `生成に失敗しました: ${err.message}`,
+    };
+  }
+  if (err instanceof Anthropic.RateLimitError) {
+    return { code: "upstream_error", message: "Claude API の利用上限に達しました。時間をおいて再試行してください" };
+  }
+  if (err instanceof Anthropic.AuthenticationError) {
+    return { code: "internal", message: "Claude API のキーが正しく設定されていません（運営者に連絡してください）" };
+  }
+  if (err instanceof Anthropic.APIError) {
+    return { code: "upstream_error", message: `Claude API のエラー（${err.status ?? "接続エラー"}）` };
+  }
+  return { code: "internal", message: err instanceof Error ? err.message : String(err) };
 }
 
 export function startWorker(deps: RunnerDeps, { intervalMs = 1000 } = {}): { stop(): Promise<void> } {
@@ -31,7 +51,8 @@ export function startWorker(deps: RunnerDeps, { intervalMs = 1000 } = {}): { sto
         console.log(`[worker] job ${job.id} 完了: ${artwork.uri}`);
       } catch (err) {
         console.error(`[worker] job ${job.id} 失敗:`, err);
-        deps.jobs.fail(job.id, describeError(err));
+        const { code, message } = describeError(err);
+        deps.jobs.fail(job.id, message, code);
       }
     }
   }

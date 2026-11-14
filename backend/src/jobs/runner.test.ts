@@ -86,7 +86,7 @@ let deps: RunnerDeps;
 
 beforeEach(() => {
   const db = openDatabase(":memory:");
-  createUserRepository(db).touch(DID, "alice.test");
+  createUserRepository(db).touch(DID, { handle: "alice.test" });
   jobs = createJobRepository(db);
   f = fakes();
   deps = {
