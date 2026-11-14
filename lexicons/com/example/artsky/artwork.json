@@ -1,0 +1,166 @@
+{
+  "lexicon": 1,
+  "id": "com.example.artsky.artwork",
+  "description": "Bluesky の投稿履歴から生成した Generative Art の作品レコード。描画関数と描画に必要な情報をすべて含み、このレコード単体から作品を再現できる。",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "1 件の作品。初回登録時の genesis と、投稿ごとの evolution がある。evolution のレコードキーは元投稿 (app.bsky.feed.post) のレコードキーと同じ TID を使い、同じ投稿から作品が重複して作られないようにする。",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["kind", "renderer", "code", "seed", "aspectRatio", "generator", "createdAt"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "genesis: 初回登録時に過去投稿から作った最初の作品。evolution: 投稿をきっかけに前作品から変化させた作品。",
+            "knownValues": ["genesis", "evolution"]
+          },
+          "trigger": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "生成のきっかけになった投稿。evolution では必須、genesis では省略する。"
+          },
+          "previous": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "直前の作品。evolution では必須、genesis では省略する。"
+          },
+          "renderer": {
+            "type": "ref",
+            "ref": "#renderer"
+          },
+          "code": {
+            "type": "string",
+            "description": "描画関数のソースコード。形式は renderer.runtime と renderer.version で決まる描画環境の仕様に従う。",
+            "maxLength": 65536
+          },
+          "params": {
+            "type": "unknown",
+            "description": "描画関数に渡すパラメータ (JSON オブジェクト)。中身は code ごとに異なる。"
+          },
+          "seed": {
+            "type": "integer",
+            "description": "描画環境が提供する疑似乱数の初期値。",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "aspectRatio": {
+            "type": "ref",
+            "ref": "#aspectRatio"
+          },
+          "title": {
+            "type": "string",
+            "description": "作品タイトル (任意)。",
+            "maxLength": 300,
+            "maxGraphemes": 100
+          },
+          "generator": {
+            "type": "ref",
+            "ref": "#generator"
+          },
+          "inputs": {
+            "type": "ref",
+            "ref": "#inputs"
+          },
+          "state": {
+            "type": "unknown",
+            "description": "次の作品の生成に引き継ぐ状態 (JSON オブジェクト)。生成側だけが解釈し、描画には使わない。"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    },
+    "renderer": {
+      "type": "object",
+      "description": "code を実行する描画環境。",
+      "required": ["runtime", "version"],
+      "properties": {
+        "runtime": {
+          "type": "string",
+          "description": "描画環境の種類。",
+          "knownValues": ["canvas2d"]
+        },
+        "version": {
+          "type": "string",
+          "description": "描画環境の仕様のバージョン (例: \"1\")。同じ runtime と version なら同じ描画結果になる。",
+          "maxLength": 32
+        },
+        "animated": {
+          "type": "boolean",
+          "description": "true ならフレームごとに描画関数を呼ぶアニメーション作品。",
+          "default": false
+        }
+      }
+    },
+    "aspectRatio": {
+      "type": "object",
+      "description": "作品の縦横比。実際の画素数は表示側が決め、描画関数は渡された幅と高さに合わせて描く。",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "description": "作品を生成した処理の情報。",
+      "required": ["id", "version"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "生成方式の識別子。",
+          "maxLength": 128
+        },
+        "version": {
+          "type": "string",
+          "description": "生成方式のバージョン。",
+          "maxLength": 64
+        },
+        "model": {
+          "type": "string",
+          "description": "生成に AI モデルを使った場合のモデル名。",
+          "maxLength": 128
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "生成に使った入力の要約。投稿本文そのものは保存しない。",
+      "properties": {
+        "postsSampled": {
+          "type": "integer",
+          "description": "生成に使った投稿の件数。genesis では直近最大 100 件、evolution では通常 1 件。",
+          "minimum": 0
+        },
+        "oldestPostAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "使った投稿のうち最も古いものの投稿日時。"
+        },
+        "newestPostAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "使った投稿のうち最も新しいものの投稿日時。"
+        },
+        "profile": {
+          "type": "ref",
+          "ref": "#profileStats"
+        }
+      }
+    },
+    "profileStats": {
+      "type": "object",
+      "description": "生成時点のアカウントの統計 (app.bsky.actor.getProfile の値)。",
+      "properties": {
+        "postsCount": { "type": "integer", "minimum": 0 },
+        "followersCount": { "type": "integer", "minimum": 0 },
+        "followsCount": { "type": "integer", "minimum": 0 },
+        "accountCreatedAt": { "type": "string", "format": "datetime" }
+      }
+    }
+  }
+}
