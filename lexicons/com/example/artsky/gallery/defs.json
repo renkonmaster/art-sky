@@ -1,0 +1,30 @@
+{
+  "lexicon": 1,
+  "id": "com.example.artsky.gallery.defs",
+  "description": "ギャラリー API で共通に使う型。",
+  "defs": {
+    "authorView": {
+      "type": "object",
+      "description": "作品の作者。",
+      "required": ["did", "handle"],
+      "properties": {
+        "did": { "type": "string", "format": "did" },
+        "handle": { "type": "string", "format": "handle" },
+        "displayName": { "type": "string", "maxGraphemes": 64, "maxLength": 640 },
+        "avatar": { "type": "string", "format": "uri" }
+      }
+    },
+    "artworkView": {
+      "type": "object",
+      "description": "作品 1 件。record は com.example.artsky.artwork のレコードそのもので、表示側はこれを描画する。",
+      "required": ["uri", "cid", "author", "record", "indexedAt"],
+      "properties": {
+        "uri": { "type": "string", "format": "at-uri" },
+        "cid": { "type": "string", "format": "cid" },
+        "author": { "type": "ref", "ref": "#authorView" },
+        "record": { "type": "unknown" },
+        "indexedAt": { "type": "string", "format": "datetime" }
+      }
+    }
+  }
+}

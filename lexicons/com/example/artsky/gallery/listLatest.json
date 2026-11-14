@@ -1,0 +1,31 @@
+{
+  "lexicon": 1,
+  "id": "com.example.artsky.gallery.listLatest",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "掲載中の参加者ごとに最新の作品を 1 件ずつ、更新が新しい順に返す。",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 30 },
+          "cursor": { "type": "string" }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["items"],
+          "properties": {
+            "cursor": { "type": "string" },
+            "items": {
+              "type": "array",
+              "items": { "type": "ref", "ref": "com.example.artsky.gallery.defs#artworkView" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

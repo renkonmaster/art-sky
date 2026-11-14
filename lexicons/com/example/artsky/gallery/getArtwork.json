@@ -1,0 +1,32 @@
+{
+  "lexicon": 1,
+  "id": "com.example.artsky.gallery.getArtwork",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "作品 1 件と、同じ作者の前後の作品の URI を返す。",
+      "parameters": {
+        "type": "params",
+        "required": ["uri"],
+        "properties": {
+          "uri": { "type": "string", "format": "at-uri" }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["artwork"],
+          "properties": {
+            "artwork": { "type": "ref", "ref": "com.example.artsky.gallery.defs#artworkView" },
+            "previous": { "type": "string", "format": "at-uri", "description": "1 つ前（古い）の作品。" },
+            "next": { "type": "string", "format": "at-uri", "description": "1 つ後（新しい）の作品。" }
+          }
+        }
+      },
+      "errors": [
+        { "name": "NotFound", "description": "作品が見つからない、または作者が掲載していない。" }
+      ]
+    }
+  }
+}

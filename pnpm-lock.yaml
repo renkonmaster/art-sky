@@ -185,6 +185,25 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6))
 
+  packages/api:
+    dependencies:
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@atproto/lexicon':
+        specifier: ^0.7.19
+        version: 0.7.19
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.1.0
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6))
+
 packages:
 
   '@anthropic-ai/sdk@1.8.0':
@@ -195,6 +214,26 @@ packages:
     peerDependenciesMeta:
       zod:
         optional: true
+
+  '@atproto/common-web@0.5.17':
+    resolution: {integrity: sha512-SdtlxRHVFYV0r5E7mIsnnRqrX5jrY1rhmVkQzK+OIcdk/WTd3wamsnM/vLPZq0YWw+HlZEPisR+1B4WCXET1Sg==}
+    engines: {node: '>=22'}
+
+  '@atproto/lex-data@0.1.10':
+    resolution: {integrity: sha512-SLnmB30avSABQCwp1DX3q/D/pvjB3qMYf/G7VU8SbJIzDwZxzEY96Cxmukyx0JXN4iN6VRYhhTPK3v1oaO1+nA==}
+    engines: {node: '>=22'}
+
+  '@atproto/lex-json@0.1.9':
+    resolution: {integrity: sha512-9geZuufwIVPSj9fniG7Ua3ZRq1DEpHCB9TGaHPHLpa0WKjjLvY2UMxvERpN97JIimusOWtPGOnzKtwQHMC371w==}
+    engines: {node: '>=22'}
+
+  '@atproto/lexicon@0.7.19':
+    resolution: {integrity: sha512-O9Igzy9RAWQRoH+N6xC8O6qMtQ5UR55bQqbL9a7k7Ou8Z1WV/6ePR6NOFqTIQNFd4XEHxJhGXzcGDR8eM7QdIw==}
+    engines: {node: '>=22'}
+
+  '@atproto/syntax@0.7.7':
+    resolution: {integrity: sha512-MJ+QUo8yzAGP2SOQKs2CBI2ouY5KaO9Pv5a7laX3xtrkfWmS/s96L/FCJm5VBHEvKXmd6ap/HSGypYclQcfoWA==}
+    engines: {node: '>=22'}
 
   '@babel/runtime@7.29.13':
     resolution: {integrity: sha512-v+oN26xP4YIlQsbQ/CbTH1WG5m/l/DjKKZNy/Kp3f/AFvbgt7Em/D0FeMM3O2hX0YzeN2M16W8lOpyhIkfCBcQ==}
@@ -504,6 +543,9 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  iso-datestring-validator@2.2.2:
+    resolution: {integrity: sha512-yLEMkBbLZTlVQqOnQ4FiMujR6T4DEcCb1xizmvXS+OxuhwcbtynoosRzdMA69zZCShCNAbi+gJ71FxZBBXx1SA==}
+
   json-schema-to-ts@3.1.1:
     resolution: {integrity: sha512-+DWg8jCJG2TEnpy7kOm/7/AxaYoaRbjVB4LFZLySZlWn8exGs3A4OLJR966cVvU26N7X9TWxl+Jsw7dzAqKT6g==}
     engines: {node: '>=16'}
@@ -585,6 +627,9 @@ packages:
   magic-string@1.4.5:
     resolution: {integrity: sha512-oLLC2+YvQUfAa+vxoufE/yc1icb87M9iXIRqAoR/2EhE/8cb3SF/+Gi0c2By1B+5Vz2e2vQtUvHiu1+63Znh+w==}
 
+  multiformats@13.4.2:
+    resolution: {integrity: sha512-eh6eHCrRi1+POZ3dA+Dq1C6jhP1GNtr9CRINMb67OKzqW9I5DUuZM/3jLPlzhgpGeiNUlEGEbkCYChXMCc/8DQ==}
+
   nanoid@3.3.20:
     resolution: {integrity: sha512-uKdg2G3GNCKQn9byYOpxbGqrT2fGO5KRt5J/8b3pok8rT6qxGWF6hxMyJiEYtAf+FVyYuD9hRaDqX5uPFYJ4ZQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -635,6 +680,9 @@ packages:
   ts-algebra@2.0.0:
     resolution: {integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==}
 
+  tslib@2.9.1:
+    resolution: {integrity: sha512-a4Ux9VKuIMHsOS7ENbEq6hK2ZGYIT27Rtl0E4eD9KqwxhKiQeMZE/9xb3IdYwWaSOyIBQLExhQgXDTYoiCxnWA==}
+
   typescript@7.0.2:
     resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}
     engines: {node: '>=16.20.0'}
@@ -642,6 +690,9 @@ packages:
 
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
+
+  unicode-segmenter@0.14.5:
+    resolution: {integrity: sha512-jHGmj2LUuqDcX3hqY12Ql+uhUTn8huuxNZGq7GvtF6bSybzH3aFgedYu/KTzQStEgt1Ra2F3HxadNXsNjb3m3g==}
 
   vite@8.3.8:
     resolution: {integrity: sha512-LzOn3h9rG/0vhLdXrV4yJ4QFA9eEoqCl+Yx+kGJd7aB9w6nfNgVHKSYwLPZUHrz4ZGa+t+kXjV9itvcHDLQouA==}
@@ -732,6 +783,9 @@ packages:
     engines: {node: '>=20.11'}
     hasBin: true
 
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
@@ -744,6 +798,36 @@ snapshots:
       standardwebhooks: 1.1.1
     optionalDependencies:
       zod: 4.6.7
+
+  '@atproto/common-web@0.5.17':
+    dependencies:
+      '@atproto/lex-data': 0.1.10
+      '@atproto/lex-json': 0.1.9
+      '@atproto/syntax': 0.7.7
+      zod: 3.25.76
+
+  '@atproto/lex-data@0.1.10':
+    dependencies:
+      multiformats: 13.4.2
+      tslib: 2.9.1
+      unicode-segmenter: 0.14.5
+
+  '@atproto/lex-json@0.1.9':
+    dependencies:
+      '@atproto/lex-data': 0.1.10
+      tslib: 2.9.1
+
+  '@atproto/lexicon@0.7.19':
+    dependencies:
+      '@atproto/common-web': 0.5.17
+      '@atproto/syntax': 0.7.7
+      multiformats: 13.4.2
+      zod: 3.25.76
+
+  '@atproto/syntax@0.7.7':
+    dependencies:
+      iso-datestring-validator: 2.2.2
+      tslib: 2.9.1
 
   '@babel/runtime@7.29.13': {}
 
@@ -916,6 +1000,8 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
+  iso-datestring-validator@2.2.2: {}
+
   json-schema-to-ts@3.1.1:
     dependencies:
       '@babel/runtime': 7.29.13
@@ -974,6 +1060,8 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
 
+  multiformats@13.4.2: {}
+
   nanoid@3.3.20: {}
 
   obug@3.0.0: {}
@@ -1029,6 +1117,8 @@ snapshots:
 
   ts-algebra@2.0.0: {}
 
+  tslib@2.9.1: {}
+
   typescript@7.0.2:
     optionalDependencies:
       '@typescript/typescript-aix-ppc64': 7.0.2
@@ -1053,6 +1143,8 @@ snapshots:
       '@typescript/typescript-win32-x64': 7.0.2
 
   undici-types@8.9.0: {}
+
+  unicode-segmenter@0.14.5: {}
 
   vite@8.3.8(@types/node@26.6.6):
     dependencies:
@@ -1088,5 +1180,7 @@ snapshots:
       - msw
 
   why-is-node-running@3.2.1: {}
+
+  zod@3.25.76: {}
 
   zod@4.6.7: {}

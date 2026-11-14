@@ -50,37 +50,17 @@
 
 ## API
 
-### 認証
+詳細は [api.md](api.md)、定義は `packages/api` と `lexicons/com/example/artsky/gallery/` にある。
 
-| メソッド | パス | 内容 |
+| 種類 | パス | ログイン |
 |---|---|---|
-| GET | `/oauth/login?handle=` | 認可サーバーへリダイレクトする |
-| GET | `/oauth/callback` | セッション Cookie を発行し、フロントエンドへ戻す |
-| POST | `/oauth/logout` | ログアウト |
-| GET | `/api/me` | ログイン中のユーザー（DID、ハンドル名、登録済みか、設定） |
-
-### 登録・投稿・ジョブ・設定（ログインが必要）
-
-| メソッド | パス | 内容 |
-|---|---|---|
-| POST | `/api/register` | 初回登録。最初の作品の生成ジョブを返す |
-| POST | `/api/posts` | `{ text }` を投稿し、投稿の URI と生成ジョブを返す |
-| GET | `/api/jobs` | 自分のジョブ一覧 |
-| GET | `/api/jobs/:id` | ジョブの状態とエラー、完成した作品の URI |
-| POST | `/api/jobs/:id/retry` | 失敗したジョブを再試行する |
-| GET / PUT | `/api/settings` | `{ generationEnabled, listed }` |
-
-### ギャラリー（ログイン不要、XRPC）
-
-Lexicon で query として定義し、他のクライアントからも使えるようにする。
-
-| パス | 内容 |
-|---|---|
-| `/xrpc/com.example.artsky.gallery.listLatest?cursor=&limit=` | 参加者ごとの最新作品 |
-| `/xrpc/com.example.artsky.gallery.listByActor?actor=&cursor=&limit=` | 1 人の作品（新しい順） |
-| `/xrpc/com.example.artsky.gallery.getArtwork?uri=` | 作品 1 件と前後の作品の URI |
-
-ギャラリー API は作品レコードの中身（`code`、`params`、`seed` など）をそのまま返し、フロントエンドが描画する。
+| 認証（画面遷移） | `/oauth/login`、`/oauth/callback`、`/oauth/logout` | ― |
+| ログイン中のユーザー | `GET /api/me` | 不要 |
+| 初回登録 | `POST /api/register` | 必要 |
+| 投稿 | `POST /api/posts` | 必要 |
+| ジョブ | `GET /api/jobs`、`GET /api/jobs/:id`、`POST /api/jobs/:id/retry` | 必要 |
+| 設定 | `GET /api/settings`、`PATCH /api/settings` | 必要 |
+| ギャラリー（XRPC） | `listLatest`、`listByActor`、`getArtwork` | 不要 |
 
 ## ローカルでの構成
 

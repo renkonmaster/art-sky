@@ -1,0 +1,37 @@
+{
+  "lexicon": 1,
+  "id": "com.example.artsky.gallery.listByActor",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "1 人の作品を新しい順に返す。",
+      "parameters": {
+        "type": "params",
+        "required": ["actor"],
+        "properties": {
+          "actor": { "type": "string", "format": "at-identifier", "description": "DID またはハンドル名。" },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 30 },
+          "cursor": { "type": "string" }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["author", "items"],
+          "properties": {
+            "author": { "type": "ref", "ref": "com.example.artsky.gallery.defs#authorView" },
+            "cursor": { "type": "string" },
+            "items": {
+              "type": "array",
+              "items": { "type": "ref", "ref": "com.example.artsky.gallery.defs#artworkView" }
+            }
+          }
+        }
+      },
+      "errors": [
+        { "name": "ActorNotFound", "description": "参加者が見つからない、または掲載していない。" }
+      ]
+    }
+  }
+}
