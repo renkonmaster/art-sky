@@ -15,7 +15,7 @@ export interface RouteDef {
   method: "GET" | "POST" | "PATCH";
   path: string;
   auth: boolean;
-  status: 200 | 201 | 202;
+  status: 200 | 202;
   query?: z.ZodType;
   body?: z.ZodType;
   response: z.ZodType;
@@ -31,14 +31,6 @@ export const routes = {
     status: 202,
     body: app.RegisterRequest,
     response: app.RegisterResponse,
-  },
-  createPost: {
-    method: "POST",
-    path: "/api/posts",
-    auth: true,
-    status: 201,
-    body: app.CreatePostRequest,
-    response: app.CreatePostResponse,
   },
   listJobs: {
     method: "GET",

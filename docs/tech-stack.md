@@ -8,7 +8,7 @@
 
 ```
             ┌──────────── generator ────────────┐
-web(投稿) → │ API → ジョブ → Claude → 検証(Chromium) │ → putRecord → 本人の PDS
+Bluesky の投稿 ─Jetstream→ │ ジョブ → Claude → 検証(Chromium) │ → putRecord → 本人の PDS
             └───────────────────────────────────┘                     │
                                                                   Jetstream
             ┌──────────── appview ──────────────┐                     │
@@ -18,20 +18,20 @@ web(閲覧) ← │ XRPC API ← 索引(SQLite) ← 購読    │ ←───�
 
 ## リポジトリ構成
 
-pnpm workspace のモノレポにする。
+pnpm workspace のモノレポにする。役割分担は [roles.md](roles.md)、API は [api.md](api.md)。
 
 ```
 lexicons/              Lexicon JSON（正本）
 packages/
-  lexicon/             Lexicon から生成した型と検証関数
-  renderer/            描画環境 canvas2d v1（iframe ランナー、乱数、ホスト側 API）
-apps/
-  generator/           生成サービス（API とジョブワーカー）
-  appview/             ギャラリー API（Jetstream 購読、索引、XRPC）
-  web/                 画面（ギャラリーと投稿・管理画面）
+  api/                 API と作品レコードのスキーマ（Zod）。フロントエンドとバックエンドで共有する
+  renderer/            描画環境 canvas2d v1（作品を動かす iframe 用の HTML を作る）
+backend/               ログイン、投稿の監視、作品の生成、ギャラリーの索引と API
+frontend/              画面。開発時はモックでバックエンドなしでも動く
 ```
 
-`packages/renderer` は、generator の検証とギャラリーの描画で同じものを使う。
+`packages/renderer` は、バックエンドの検証とフロントエンドの描画で同じものを使う。
+
+> 以下の「generator」と「appview」は、バックエンドの中の 2 つのモジュール（生成と索引）を指す。
 
 ## 共通
 
@@ -50,7 +50,7 @@ apps/
 |---|---|---|
 | API | Hono 4 + `@hono/node-server` | 軽量で型が強い |
 | ログイン | `@atproto/oauth-client-node` | AT Protocol 公式の OAuth クライアント |
-| Bluesky API | `@atproto/api` | 投稿、プロフィール取得、レコード書き込み |
+| Bluesky API | `@atproto/api` | 投稿とプロフィールの取得、レコード書き込み |
 | DB | SQLite（better-sqlite3）+ Drizzle ORM | 初期版は 1 台で足りる。後で PostgreSQL に移せる |
 | ジョブ | SQLite のジョブテーブルをワーカーが取得 | Redis などを増やさずに済む |
 | 描画関数の生成 | Claude API（`@anthropic-ai/sdk`、`claude-opus-5-5`） | コード生成の品質が高い |
@@ -60,10 +60,17 @@ apps/
 
 OAuth のスコープは必要な操作だけに絞る。
 
-- `repo:app.bsky.feed.post?action=create`（投稿）
 - `repo:com.example.artsky.artwork`（作品レコードの読み書き）
 
 直近 100 件の投稿と総投稿数は公開情報なので、ログインせずに公開 AppView の `app.bsky.feed.getAuthorFeed` と `app.bsky.actor.getProfile` から取得する。
+
+### 投稿の監視
+
+このサイトからは投稿しない。登録済みの人が Bluesky に投稿したら、それをきっかけに作品を作る。
+
+- Jetstream を `app.bsky.feed.post` と登録済みの DID で絞って購読し、新しい投稿ごとに evolution ジョブを作る。
+- 返信・引用・リポストは対象外にする。
+- カーソルを DB に保存し、停止していた間の投稿も再開時に拾う。
 
 ### ジョブ
 

@@ -45,12 +45,3 @@ export const ERRORS = {
   UpstreamError: 502,
 } as const;
 export type ErrorCode = keyof typeof ERRORS;
-
-const segmenter = new Intl.Segmenter();
-
-/** 書記素（見た目の 1 文字）単位で数える。Bluesky の投稿の文字数制限はこの数え方。 */
-export function countGraphemes(text: string): number {
-  let count = 0;
-  for (const _ of segmenter.segment(text)) count++;
-  return count;
-}

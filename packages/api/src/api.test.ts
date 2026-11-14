@@ -5,7 +5,6 @@ import { Lexicons } from "@atproto/lexicon";
 import { describe, expect, it } from "vitest";
 import {
   ArtworkRecord,
-  CreatePostRequest,
   GetArtworkOutput,
   ListByActorOutput,
   ListLatestOutput,
@@ -98,14 +97,6 @@ describe("Lexicon と Zod スキーマが一致する", () => {
 });
 
 describe("内部 API のスキーマ", () => {
-  const id = "0f8fad5b-d9cb-469f-a165-70867728950e";
-
-  it("投稿は書記素で 300 文字まで", () => {
-    expect(CreatePostRequest.safeParse({ text: "👨‍👩‍👧".repeat(300), clientRequestId: id }).success).toBe(true);
-    expect(CreatePostRequest.safeParse({ text: "あ".repeat(301), clientRequestId: id }).success).toBe(false);
-    expect(CreatePostRequest.safeParse({ text: "  ", clientRequestId: id }).success).toBe(false);
-  });
-
   it("returnTo はサイト内のパスだけ", () => {
     expect(LoginQuery.parse({ handle: "alice.bsky.social" }).returnTo).toBe("/");
     expect(LoginQuery.safeParse({ handle: "a", returnTo: "/me/jobs" }).success).toBe(true);

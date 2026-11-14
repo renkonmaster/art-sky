@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { countGraphemes, Datetime, Did, StrongRef } from "./common.ts";
+import { Datetime, Did, StrongRef } from "./common.ts";
 
 /**
  * 内部 API（このサービスの画面だけが使う）。認証はセッション Cookie。
@@ -9,7 +9,7 @@ import { countGraphemes, Datetime, Did, StrongRef } from "./common.ts";
 // ---- 設定 ----
 
 export const Settings = z.object({
-  /** false にすると、以後の投稿で作品を生成しない。 */
+  /** false にすると、以後 Bluesky に投稿しても作品を生成しない。 */
   generationEnabled: z.boolean(),
   /** false にすると、ギャラリーに作品を表示しない。 */
   listed: z.boolean(),
@@ -61,7 +61,7 @@ export const Job = z.object({
   id: z.string(),
   kind: JobKind,
   status: JobStatus,
-  /** evolution のきっかけになった投稿。 */
+  /** evolution のきっかけになった Bluesky の投稿。 */
   trigger: StrongRef.optional(),
   /** done になったら、保存した作品。 */
   artwork: StrongRef.optional(),
@@ -98,31 +98,6 @@ export const RegisterResponse = z.object({
   job: Job,
 });
 export type RegisterResponse = z.infer<typeof RegisterResponse>;
-
-// ---- 投稿 ----
-
-export const POST_MAX_GRAPHEMES = 300;
-
-/** POST /api/posts */
-export const CreatePostRequest = z.object({
-  text: z
-    .string()
-    .refine((s) => s.trim().length > 0, "本文が空です")
-    .refine((s) => countGraphemes(s) <= POST_MAX_GRAPHEMES, `本文は ${POST_MAX_GRAPHEMES} 文字までです`),
-  /**
-   * 送信ボタンを押すたびにフロントエンドで発行する UUID。
-   * 通信エラーで同じリクエストを送り直しても、同じ ID なら投稿は 1 回だけになる。
-   */
-  clientRequestId: z.uuid(),
-});
-export type CreatePostRequest = z.infer<typeof CreatePostRequest>;
-
-export const CreatePostResponse = z.object({
-  post: StrongRef.extend({ createdAt: Datetime }),
-  /** 生成を停止している場合は null。 */
-  job: Job.nullable(),
-});
-export type CreatePostResponse = z.infer<typeof CreatePostResponse>;
 
 // ---- ジョブの一覧・取得・再試行 ----
 
