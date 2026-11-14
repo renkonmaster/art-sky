@@ -3,30 +3,36 @@
  * - publicUrl なし：開発用のループバッククライアント（http://127.0.0.1 で開く）
  * - publicUrl あり：/client-metadata.json を公開する Web クライアント（HTTPS 必須）
  *
- * TODO: ストアはメモリ上にあり、再起動でログインが切れる。SQLite に移す（docs/tech-stack.md）。
+ * state と session は SQLite に保存する（db/oauthStores.ts）。
  */
-import { NodeOAuthClient, type NodeSavedSession, type NodeSavedState } from "@atproto/oauth-client-node";
+import { NodeOAuthClient } from "@atproto/oauth-client-node";
+import type { Database } from "../db/database.ts";
+import { createOAuthStores } from "../db/oauthStores.ts";
 import { ARTWORK_COLLECTION } from "../generation/record.ts";
 
 /** 必要な操作だけに絞る（docs/tech-stack.md「ログインの権限」） */
 export const SCOPE = ["atproto", "repo:app.bsky.feed.post?action=create", `repo:${ARTWORK_COLLECTION}`].join(" ");
 
-function memoryStore<T>() {
-  const map = new Map<string, T>();
-  return {
-    async set(key: string, value: T) {
-      map.set(key, value);
-    },
-    async get(key: string) {
-      return map.get(key);
-    },
-    async del(key: string) {
-      map.delete(key);
-    },
+/**
+ * トークンの更新を同じキーごとに 1 つずつ行うロック。API とワーカーが同じ人のセッションを
+ * 同時に更新すると、片方の更新トークンが失効してログインが切れるため。
+ * 1 プロセスで動かす前提。複数台にするときは DB などを使ったロックに替える。
+ */
+function createInProcessLock() {
+  const tails = new Map<string, Promise<unknown>>();
+  return async <T>(name: string, fn: () => T | PromiseLike<T>): Promise<T> => {
+    const prev = tails.get(name) ?? Promise.resolve();
+    const run = prev.catch(() => {}).then(fn);
+    tails.set(name, run);
+    try {
+      return await run;
+    } finally {
+      if (tails.get(name) === run) tails.delete(name);
+    }
   };
 }
 
-export function createOAuthClient({ publicUrl, port }: { publicUrl?: string; port: number }): NodeOAuthClient {
+export function createOAuthClient({ db, publicUrl, port }: { db: Database; publicUrl?: string; port: number }): NodeOAuthClient {
   const isLoopback = !publicUrl;
   const base = isLoopback ? `http://127.0.0.1:${port}` : publicUrl.replace(/\/$/, "");
   const redirectUri = `${base}/oauth/callback` as const;
@@ -48,7 +54,7 @@ export function createOAuthClient({ publicUrl, port }: { publicUrl?: string; por
       token_endpoint_auth_method: "none",
       dpop_bound_access_tokens: true,
     },
-    stateStore: memoryStore<NodeSavedState>(),
-    sessionStore: memoryStore<NodeSavedSession>(),
+    ...createOAuthStores(db),
+    requestLock: createInProcessLock(),
   });
 }

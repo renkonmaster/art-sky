@@ -61,7 +61,7 @@ frontend/              画面（ギャラリーと投稿・管理画面）
 | API | Hono 4 + `@hono/node-server` | 軽量で型が強い |
 | ログイン | `@atproto/oauth-client-node` | AT Protocol 公式の OAuth クライアント |
 | Bluesky API | `@atproto/api` | 投稿、プロフィール取得、レコード書き込み |
-| DB | SQLite（better-sqlite3）+ Drizzle ORM | 初期版は 1 台で足りる。後で PostgreSQL に移せる |
+| DB | SQLite（Node.js 標準の `node:sqlite`） | 初期版は 1 台で足りる。ネイティブモジュールのビルドが要らない。表が少ないので ORM は使わず SQL を直接書く |
 | ジョブ | SQLite のジョブテーブルをワーカーが取得 | Redis などを増やさずに済む |
 | 描画関数の生成 | Claude API（`@anthropic-ai/sdk`、`claude-opus-5-5`） | コード生成の品質が高い |
 | 生成結果の検証 | Playwright + ヘッドレス Chromium | ギャラリーと同じブラウザ・同じ renderer で実行できる |
@@ -106,7 +106,7 @@ OAuth のスコープは必要な操作だけに絞る。
 |---|---|---|
 | 購読 | Jetstream（Node.js 標準の WebSocket） | `wantedCollections` で作品レコードだけを受け取れる |
 | API | Hono 4、Lexicon で定義した XRPC query | 他のクライアントからも使える |
-| DB | SQLite（better-sqlite3）+ Drizzle ORM | generator とは別のファイルにする |
+| DB | SQLite（`node:sqlite`） | generator とは別のファイルにする |
 | DID の解決 | `@atproto/identity` | DID からハンドル名と PDS を調べる |
 
 - Jetstream のカーソルを DB に保存し、再起動しても続きから受け取る。

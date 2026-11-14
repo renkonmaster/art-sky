@@ -2,3 +2,7 @@ packages:
   - backend
   - frontend
   - packages/*
+
+# core-js の postinstall は寄付の案内を出すだけなので実行しない
+allowBuilds:
+  core-js: false

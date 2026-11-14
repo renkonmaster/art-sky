@@ -26,10 +26,13 @@ PDS のレコードは公開されるので、推定結果も公開される。
 | `src/bluesky/posts.ts` | プロフィール統計と直近の投稿の取得 | ✓ |
 | `src/features/stats.ts` | 投稿の量・時間帯・文体の特徴（すべて整数） | ✓ |
 | `src/generation/` | プロンプト、Claude 呼び出し、出力の検査、レコードの組み立て | ✓ |
-| `src/auth/oauth.ts` | AT Protocol OAuth クライアント | ✓（ストアはメモリ上） |
-| API（Hono） | `/oauth/*`、`/api/*`（roles.md） | 未着手 |
-| ジョブ（SQLite） | 生成ジョブの状態管理と再試行 | 未着手 |
-| 検証（Chromium） | 生成した `code` を実行して確かめる | 未着手 |
+| `src/auth/oauth.ts` | AT Protocol OAuth クライアント（state と session は SQLite） | ✓ |
+| `src/db/` | SQLite のスキーマ、OAuth のストア | ✓ |
+| `src/users.ts` | 参加者、同意、設定 | ✓ |
+| `src/api/app.ts` | `/oauth/*`、`/api/*`（roles.md） | ✓ |
+| `src/jobs/` | 生成ジョブの状態管理、実行、ワーカー | ✓ |
+| `src/server.ts` | API とワーカーの起動 | ✓ |
+| 検証（Chromium） | 生成した `code` を実行して確かめる | 未着手（今は形式の検査だけ） |
 | 索引（Jetstream） | ギャラリー用の索引と XRPC | 未着手 |
 
 ## 開発
@@ -37,6 +40,7 @@ PDS のレコードは公開されるので、推定結果も公開される。
 ```bash
 pnpm install
 cp .env.example .env   # ANTHROPIC_API_KEY などを設定
+pnpm dev               # http://127.0.0.1:3000 で API とワーカーを起動
 pnpm test              # ネット不要
 pnpm typecheck
 pnpm try:generate      # fixtures/ の投稿で作品を 1 つ生成して out/ に書き出す（Claude API の料金がかかる）
