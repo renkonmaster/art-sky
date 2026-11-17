@@ -9,7 +9,10 @@
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "dev:service": "node --watch --env-file-if-exists=.env src/server.ts",
-    "e2e": "node scripts/e2e-service.ts"
+    "e2e": "node scripts/e2e-service.ts",
+    "cf:migrate:local": "wrangler d1 migrations apply art-sky --local",
+    "cf:dev": "wrangler d1 migrations apply art-sky --local && wrangler dev --port 8787 --test-scheduled",
+    "cf:deploy": "wrangler d1 migrations apply art-sky --remote && wrangler deploy"
   },
   "dependencies": {
     "@art-sky/api": "workspace:*",
@@ -27,6 +30,7 @@
     "@types/node": "^26.6.6",
     "playwright": "1.65.0",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "wrangler": "4.156.2"
   }
 }

@@ -7,12 +7,12 @@
  *   - params ：推定した状態＋seed（DID から作る）＋style（最初の作品で決めた画風）
  * 状態は前の作品の params から引き継ぐので、投稿のたびに少しずつ変化する。
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import drawSource from "@art-sky/art/draw-source.js";
 import { estimateGenesis, evolveState, type ArtState } from "@art-sky/art";
 import { EMOTIONS, TRAITS, type Analysis, type GenerationInput, type GenerationResult } from "./types.ts";
 
-export const DRAW_CODE = readFileSync(fileURLToPath(import.meta.resolve("@art-sky/art/draw.js")), "utf8");
+/** 描画モジュールのソース。ファイルを読まずに import するので、Workers でも同じように使える。 */
+export const DRAW_CODE: string = drawSource;
 export const RULES_MODEL = "artsky-rules-1";
 
 /** DID → 32 ビットのシード（FNV-1a）。描画モジュールの乱数はこれだけを使う。 */

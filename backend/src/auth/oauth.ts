@@ -10,7 +10,7 @@
  */
 import { JoseKey } from "@atproto/jwk-jose";
 import { OAuthClient } from "@atproto/oauth-client";
-import type { Sql } from "../db/database.ts";
+import type { Sql } from "../db/sql.ts";
 import { createOAuthStores } from "../db/oauthStores.ts";
 import { ARTWORK_COLLECTION } from "../generation/record.ts";
 
@@ -69,6 +69,20 @@ export function createRequestLock(db: Sql, { ttlMs = 30_000, waitMs = 15_000 } =
   };
 }
 
+/**
+ * Workers の fetch は redirect: "error" に対応していない（"follow" と "manual" だけ）。
+ * OAuth クライアントは ID の解決などで "error" を使うので、"manual" に替え、リダイレクトが返ったら失敗にする。
+ * Node.js でも同じ結果になる。
+ */
+export const redirectSafeFetch: typeof fetch = async (input, init) => {
+  if (init?.redirect !== "error") return fetch(input, init);
+  const res = await fetch(input, { ...init, redirect: "manual" });
+  if (res.status >= 300 && res.status < 400) {
+    throw new TypeError(`リダイレクトは許可されていません（${res.status}）`);
+  }
+  return res;
+};
+
 /** WebCrypto の digest。OAuth クライアントは { name: "sha256" } の形でアルゴリズムを渡す。 */
 async function digest(bytes: Uint8Array, algorithm: { name: string }): Promise<Uint8Array> {
   const name = algorithm.name.replace(/^sha(\d+)$/, "SHA-$1");
@@ -99,6 +113,7 @@ export function createOAuthClient({ db, publicUrl, port }: { db: Sql; publicUrl?
     },
     responseMode: "query",
     handleResolver: HANDLE_RESOLVER,
+    fetch: redirectSafeFetch,
     ...createOAuthStores(db),
     runtimeImplementation: {
       requestLock: createRequestLock(db),

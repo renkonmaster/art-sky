@@ -1,5 +1,5 @@
 /** 参加者と設定（Plan.md 7.2、docs/api.md の /api/me と /api/settings）。 */
-import { nowIso, type Sql } from "./db/database.ts";
+import { nowIso, type Sql } from "./db/sql.ts";
 
 export interface User {
   did: string;

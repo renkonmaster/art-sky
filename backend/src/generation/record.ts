@@ -1,4 +1,3 @@
-import { randomInt } from "node:crypto";
 import type { GenerationInput, GenerationResult, SourcePost } from "./types.ts";
 
 export const ARTWORK_COLLECTION = "com.example.artsky.artwork";
@@ -50,7 +49,7 @@ export type RecordRefs = { kind: "genesis" } | { kind: "evolution"; trigger: Str
 
 /** 0 から 2^32-1 までの乱数シード。 */
 export function randomSeed(): number {
-  return randomInt(0, 2 ** 32);
+  return crypto.getRandomValues(new Uint32Array(1))[0]!;
 }
 
 function postRange(posts: SourcePost[]): { oldestPostAt?: string; newestPostAt?: string } {

@@ -1,0 +1,29 @@
+# Cloudflare Workers の設定（docs/deploy-workers.md）。
+#   pnpm cf:dev       ローカルで動かす（アカウント不要。D1 もローカルのファイル）
+#   pnpm cf:deploy    デプロイする
+name = "art-sky"
+main = "src/cloudflare.ts"
+compatibility_date = "2026-10-15"
+
+# 画面（frontend をビルドしたもの）。API などのパスだけ Worker が受け、それ以外は静的ファイルを返す。
+# 画面のパス（/u/... など）は index.html を返す。
+[assets]
+directory = "../frontend/dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/xrpc/*", "/oauth/*", "/client-metadata.json", "/jwks.json"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "art-sky"
+# wrangler d1 create art-sky で表示された ID に置き換える（ローカルではこのままでよい）
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# 1 分ごとに投稿を取り込み、ジョブを処理する（src/cron.ts）
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+TZ_NAME = "Asia/Tokyo"
+# PUBLIC_URL は公開する URL（https://art-sky.<アカウント>.workers.dev など）。デプロイ前に設定する。
+# COOKIE_SECRET は wrangler secret put COOKIE_SECRET で設定する（ローカルでは .dev.vars に書く）。

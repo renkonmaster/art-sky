@@ -27,6 +27,7 @@ PDS のレコードは公開されるので、推定結果も公開される（�
 | パス | 役割 |
 |---|---|
 | `src/server.ts` | 起動。API と定期実行を 1 つのプロセスで動かす。ビルドした画面があれば配る |
+| `src/cloudflare.ts` | Cloudflare Workers の入口（fetch と Cron）。設定は `wrangler.toml`、手順は docs/deploy-workers.md |
 | `src/cron.ts` | 定期実行 1 回分：止まったジョブのやり直し → 投稿の取り込み → ジョブの処理（件数と時間に上限） |
 | `src/api/app.ts` | `/oauth/*`、`/api/*`、`/xrpc/*`（[docs/api.md](../docs/api.md)）。形は `@art-sky/api` のスキーマに従う |
 | `src/auth/oauth.ts` | AT Protocol OAuth クライアント。求める権限は作品レコードの読み書きだけ |

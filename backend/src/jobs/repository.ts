@@ -7,7 +7,7 @@
  *   保存が二重に走っても同じレコードへの putRecord になり、作品は重複しない。
  * - 1 人のジョブは古い順に 1 つずつ処理する。evolution は genesis が終わるまで待つ。
  */
-import { nowIso, type Sql } from "../db/database.ts";
+import { nowIso, type Sql } from "../db/sql.ts";
 
 export type JobKind = "genesis" | "evolution";
 export type JobStatus = "queued" | "generating" | "validating" | "saving" | "done" | "failed";

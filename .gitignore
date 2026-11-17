@@ -6,3 +6,8 @@ node_modules/
 backend/out/
 backend/data/
 dist/
+
+# Cloudflare Workers（wrangler）のローカルの秘密情報と状態
+.dev.vars
+.dev.vars.*
+.wrangler/

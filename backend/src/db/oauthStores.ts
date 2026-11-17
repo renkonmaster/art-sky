@@ -7,7 +7,7 @@
  */
 import { JoseKey } from "@atproto/jwk-jose";
 import type { InternalStateData, Session, SessionStore, StateStore } from "@atproto/oauth-client";
-import { nowIso, type Sql } from "./database.ts";
+import { nowIso, type Sql } from "./sql.ts";
 
 type Saved<T extends { dpopKey: unknown }> = Omit<T, "dpopKey"> & { dpopJwk: Record<string, unknown> };
 

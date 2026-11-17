@@ -3,10 +3,18 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": { "types": "./src/estimate.d.ts", "default": "./src/estimate.js" },
-    "./draw.js": "./src/draw.js"
+    ".": {
+      "types": "./src/estimate.d.ts",
+      "default": "./src/estimate.js"
+    },
+    "./draw.js": "./src/draw.js",
+    "./draw-source.js": {
+      "types": "./src/draw-source.d.ts",
+      "default": "./src/draw-source.js"
+    }
   },
   "scripts": {
-    "test": "node --test src/"
+    "test": "node --test src/",
+    "build:source": "node scripts/build-source.js"
   }
 }

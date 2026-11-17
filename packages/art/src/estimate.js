@@ -189,9 +189,17 @@ function toMix(vec) {
   return mix;
 }
 
+/** タイムゾーンごとの書式。作るのが重いので使い回す（Cloudflare Workers の CPU 時間の制限に収めるため）。 */
+const minuteFormats = new Map();
+
 /** その日の何分目か（0〜1439）。 */
 function minuteOfDay(iso, timeZone) {
-  const parts = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
+  let fmt = minuteFormats.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    minuteFormats.set(timeZone, fmt);
+  }
+  const parts = fmt.formatToParts(new Date(iso));
   const get = (t) => Number(parts.find((p) => p.type === t).value);
   return get("hour") * 60 + get("minute");
 }

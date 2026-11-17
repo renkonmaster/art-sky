@@ -12,7 +12,7 @@
  * 次の作品の生成は PDS の作品から前作品を探すので（jobs/runner.ts）、ここに過去の作品がなくても困らない。
  */
 import { ArtworkRecord, type ArtworkView, type AuthorView } from "@art-sky/api";
-import { nowIso, type Sql } from "../db/database.ts";
+import { nowIso, type Sql } from "../db/sql.ts";
 import { ARTWORK_COLLECTION } from "../generation/record.ts";
 import type { User } from "../users.ts";
 

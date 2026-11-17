@@ -137,7 +137,11 @@ OAuth のスコープは必要な操作だけに絞る。
 
 作品詳細を SNS で共有したときの OGP 画像が必要になったら、SSR かサムネイル配信を追加する。
 
+## 公開先
+
+Cloudflare Workers の無料プラン（Workers ＋ Static Assets ＋ D1 ＋ Cron）。手順は [deploy-workers.md](deploy-workers.md)。
+Node.js のサーバー（`backend/src/server.ts`）でも同じ部品で動く。
+
 ## 未決定
 
-- ホスティング先。SQLite を置く永続ディスクと、Chromium を動かせる環境が必要。
-- サムネイルの保存先（検証時に PNG を作れるので、置き場所だけ決めればよい）。
+- サムネイルの保存先（OGP 画像が必要になったら決める。Workers では Chromium で PNG を作れないので、画面側で描いたものを保存するなど）。
