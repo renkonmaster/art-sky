@@ -1,15 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/database.ts";
-import { toGeneratedArtwork } from "../generation/claude.ts";
 import type { ArtworkRecord } from "../generation/record.ts";
-import type { GenerationInput } from "../generation/types.ts";
+import type { GeneratedArtwork, GenerationInput } from "../generation/types.ts";
 import { createUserRepository } from "../users.ts";
 import { createJobRepository, type JobRepository } from "./repository.ts";
 import { runJob, type RunnerDeps } from "./runner.ts";
 
 const DID = "did:plc:alice";
 
-const generated = toGeneratedArtwork({
+const generated: GeneratedArtwork = {
   analysis: {
     valence: 0,
     arousal: 500,
@@ -18,11 +17,11 @@ const generated = toGeneratedArtwork({
     personality: { openness: 500, conscientiousness: 500, extraversion: 500, agreeableness: 500, neuroticism: 500 },
   },
   code: "export default function draw(ctx, env) {}",
-  paramsJson: "{}",
-  stateJson: '{"pieces":1}',
+  params: {},
+  state: { pieces: 1 },
   animated: false,
   aspectRatio: { width: 1, height: 1 },
-});
+};
 
 /** PDS と公開 AppView の代わり */
 function fakes() {

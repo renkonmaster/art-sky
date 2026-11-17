@@ -74,7 +74,7 @@ systemctl --user stop art-sky-tunnel art-sky
 | `pnpm test` | 単体テスト。backend の API は、frontend と同じスキーマで応答を検証する |
 | `pnpm build && pnpm --filter @art-sky/backend e2e` | ビルドした画面と本物の backend をつないで、ブラウザで通しで確かめる |
 | `pnpm --filter @art-sky/frontend e2e` | 架空のデータ（モック）で、画面だけを確かめる |
-| `node backend/scripts/try-rules.ts` | 3 つの画風の作品を作り、Chromium の検証に通す |
+| `pnpm --filter @art-sky/backend try:rules` | 3 つの画風の作品を作り、Chromium の検証に通す |
 | `node backend/scripts/migrate-to-self.ts --db <DB> --port <PORT> [--apply]` | 以前の方式（投稿ごとのレコード）の作品を `self` 1 件にまとめ、残りを PDS から消す |
 | `playground/art.html` | 推定と描画を試すページ（`playground/` を静的に配信して開く） |
 

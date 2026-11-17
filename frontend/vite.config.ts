@@ -4,7 +4,7 @@ import { mockApi } from "./mock/plugin.ts";
 
 /**
  * 開発サーバーは、既定で本物のバックエンド（http://127.0.0.1:3000）につなぐ。
- * 作品は、バックエンドが Claude で生成して PDS に保存した描画関数をそのまま使う。
+ * 作品は、バックエンドが生成して PDS に保存した描画関数をそのまま使う。
  *
  *   pnpm dev                                    本物のバックエンドにつなぐ（backend も起動しておく）
  *   BACKEND_URL=http://example:3000 pnpm dev    別の場所のバックエンドにつなぐ

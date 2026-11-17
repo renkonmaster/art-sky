@@ -50,7 +50,7 @@ const record = {
   seed: 12345,
   aspectRatio: { width: 4, height: 5 },
   title: "初雪",
-  generator: { id: "artsky-claude", version: "0.1.0", model: "claude-opus-5-5" },
+  generator: { id: "artsky-rules", version: "0.2.0", model: "artsky-rules-1" },
   inputs: { postsSampled: 1, profile: { postsCount: 2842 } },
   state: { pieces: 2 },
   createdAt: "2026-11-14T07:31:00.000Z",

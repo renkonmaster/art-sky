@@ -82,7 +82,7 @@ export interface EvolutionInput {
 
 export type GenerationInput = GenesisInput | EvolutionInput;
 
-/** Claude が生成した作品。レコードにするにはシードや参照を足す（record.ts）。 */
+/** 生成した作品。レコードにするにはシードや参照を足す（record.ts）。 */
 export interface GeneratedArtwork {
   /** 今回の時点での感情と個性の推定。evolution では前作品の state.analysis を更新したもの。 */
   analysis: Analysis;

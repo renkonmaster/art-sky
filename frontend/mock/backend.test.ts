@@ -71,10 +71,10 @@ describe("ログインから作品の変化まで", () => {
   it("新しい人が登録すると、最初の作品ができてギャラリーの先頭に並ぶ", () => {
     const { call, advance } = setup();
     expect(call("GET", "/oauth/login?handle=newbie.example.com&returnTo=/studio").headers?.location).toBe("/studio");
-    expect(call("POST", "/api/register", { consent: { externalAi: false } }).status).toBe(400);
-    const reg = routes.register.response.parse(call("POST", "/api/register", { consent: { externalAi: true } }).body);
+    expect(call("POST", "/api/register", { consent: { publish: false } }).status).toBe(400);
+    const reg = routes.register.response.parse(call("POST", "/api/register", { consent: { publish: true } }).body);
     expect(reg.job).toMatchObject({ kind: "genesis", status: "queued" });
-    expect(call("POST", "/api/register", { consent: { externalAi: true } }).status).toBe(409);
+    expect(call("POST", "/api/register", { consent: { publish: true } }).status).toBe(409);
 
     advance(2000);
     expect(routes.getJob.response.parse(call("GET", `/api/jobs/${reg.job.id}`).body).job.status).toBe("generating");

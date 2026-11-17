@@ -4,9 +4,9 @@
  *   pnpm build            （リポジトリの直下で。frontend/dist を作る）
  *   pnpm --filter @art-sky/backend e2e [スクリーンショットの出力先]
  *
- * 外部サービス（Bluesky の認可、Claude、Jetstream）は使わない。代わりに、
- *   - DB に参加者と作品を入れておく。作品は、Claude が実際に生成したレコード
- *     （fixtures/generated-artwork.json。pnpm try:generate の出力）を使う
+ * 外部サービス（Bluesky の認可、Jetstream）は使わない。代わりに、
+ *   - DB に参加者と作品を入れておく。作品は、生成器（generation/rules.ts）で作ったレコード
+ *     （fixtures/generated-artwork.json）を使う
  *   - ログイン済みの Cookie をこのスクリプトで作る（本物と同じ署名）
  * 生成ジョブは OAuth のセッションがないので失敗するが、その失敗が画面に正しく出ることを確かめる。
  */
@@ -52,7 +52,7 @@ const dbPath = path.join(dir, "e2e.sqlite");
   const users = createUserRepository(db);
   const gallery = createGalleryIndex(db);
   const jobs = createJobRepository(db);
-  // Claude が実際に生成した作品レコード。題名・日時・シードだけ変えて、複数の作品として使う。
+  // 生成器で作った作品レコード。題名・日時だけ変えて、それぞれの人の作品として使う。
   const generated = JSON.parse(readFileSync(path.join(here, "../fixtures/generated-artwork.json"), "utf8")) as Record<string, unknown>;
   const record = (title: string, createdAt: string, extra: Record<string, unknown> = {}) => ({
     ...generated,
@@ -103,7 +103,6 @@ const server = spawn(process.execPath, ["src/server.ts"], {
     PUBLIC_URL: "",
     COOKIE_SECRET: SECRET,
     DB_PATH: dbPath,
-    ANTHROPIC_API_KEY: "",
     VALIDATE: "off",
     // 外部の Jetstream にはつながない（閉じたポートを指す。つながらなくても他は動くことも確かめる）。
     JETSTREAM_URL: "ws://127.0.0.1:9/subscribe",
@@ -173,13 +172,13 @@ try {
   // 画面のパスを直接開いても（再読み込みしても）表示される。
   await page.goto(`${BASE}/u/alice.e2e.test`);
   await page.waitForSelector(".tile");
-  assert((await page.locator(".tile").count()) === 2, "アリスの作品が 2 件ではない");
+  // 作品は 1 人 1 件：二作目を入れた時点で、はじまりは索引から消えている
+  assert((await page.locator(".tile").count()) === 1, "アリスの作品が 1 件ではない");
   await page.locator(".tile-art").first().click();
   await page.waitForSelector(".detail");
-  assert((await page.locator(".detail h1").textContent()) === "二作目", "最新の作品が開かない");
+  assert(await page.getByText("投稿をきっかけに変化した作品").isVisible(), "最新の作品（二作目）が開かない");
   assert(await page.getByText("Bluesky で見る").isVisible(), "元の投稿へのリンクがない");
-  await page.getByRole("link", { name: "← 前の作品" }).click();
-  await page.waitForFunction(() => document.querySelector(".detail h1")?.textContent === "はじまり");
+  assert((await page.getByRole("link", { name: "← 前の作品" }).count()) === 0, "消えた前の作品へのリンクがある");
   await page.goto(`${BASE}/u/nobody.e2e.test`);
   await page.waitForSelector(".state-error");
 

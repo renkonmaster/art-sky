@@ -6,7 +6,7 @@ export interface User {
   handle: string;
   displayName: string | null;
   avatar: string | null;
-  /** 外部 AI への送信と推定結果の公開に同意した日時。null なら未登録。 */
+  /** 推定結果の公開に同意した日時。null なら未登録。 */
   consentedAt: string | null;
   generationEnabled: boolean;
   listed: boolean;

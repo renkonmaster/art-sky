@@ -6,133 +6,97 @@
     "version": "1",
     "animated": true
   },
-  "code": "let S=null;\nfunction build(env){const W=env.width,H=env.height,P=env.params,r=env.random;const hy=H*P.horizon/1000;const ridges=[];for(let j=0;j<2;j++){const pts=[];let h=0.5+r()*0.3;for(let i=0;i<=60;i++){h+=(r()-0.5)*0.12;h=Math.max(0.15,Math.min(1,h));pts.push(h)}ridges.push(pts)}const lamps=[];for(let i=0;i<P.lampCount;i++){const x=W*(0.06+0.88*(i+0.5)/P.lampCount)+(r()-0.5)*W*0.04;lamps.push({x:x,h:H*(0.05+r()*0.02),ph:r()*6.28,c:P.lamp[Math.floor(r()*P.lamp.length)]})}const leaves=[];for(let i=0;i<P.leafCount;i++){leaves.push({x:r()*W,y:r()*H,v:H*(0.02+r()*0.04),ph:r()*6.28,s:W*(0.006+r()*0.008),c:P.autumn[Math.floor(r()*P.autumn.length)],rot:r()*6.28})}const rain=[];for(let i=0;i<P.rainCount;i++){rain.push({x:r()*W*1.2,y:r()*H,l:H*(0.02+r()*0.03),v:H*(0.5+r()*0.4)})}const stars=[];for(let i=0;i<P.starCount;i++){stars.push({x:r()*W,y:r()*hy*0.7,ph:r()*6.28,s:0.5+r()*1.2})}return{W:W,H:H,hy:hy,ridges:ridges,lamps:lamps,leaves:leaves,rain:rain,stars:stars}}\nexport default function draw(ctx,env){const P=env.params;if(!S||S.W!==env.width||S.H!==env.height)S=build(env);const W=S.W,H=S.H,hy=S.hy,t=env.time*P.speed/1000;ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;let g=ctx.createLinearGradient(0,0,0,hy);g.addColorStop(0,P.sky[0]);g.addColorStop(0.7,P.sky[1]);g.addColorStop(1,P.sky[2]);ctx.fillStyle=g;ctx.fillRect(0,0,W,hy+1);ctx.fillStyle='#fff';for(const s of S.stars){ctx.globalAlpha=0.25+0.25*Math.sin(t*0.8+s.ph);ctx.fillRect(s.x,s.y,s.s,s.s)}for(let j=0;j<2;j++){const pts=S.ridges[j];const top=hy-H*(j?0.08:0.16);ctx.beginPath();ctx.moveTo(0,hy);for(let i=0;i<=60;i++){ctx.lineTo(W*i/60,hy-(hy-top)*pts[i])}ctx.lineTo(W,hy);ctx.closePath();const rg=ctx.createLinearGradient(0,0,W,0);rg.addColorStop(0,P.autumn[0]);rg.addColorStop(0.5,P.autumn[1]);rg.addColorStop(1,P.autumn[2]);ctx.globalAlpha=1;ctx.fillStyle=j?P.ridge[1]:P.ridge[0];ctx.fill();ctx.globalAlpha=(j?P.autumnGlow*0.6:P.autumnGlow)/1000;ctx.fillStyle=rg;ctx.fill()}ctx.globalAlpha=1;g=ctx.createLinearGradient(0,hy,0,H);g.addColorStop(0,P.water[0]);g.addColorStop(1,P.water[1]);ctx.fillStyle=g;ctx.fillRect(0,hy,W,H-hy);ctx.fillStyle=P.bank;ctx.fillRect(0,hy-H*0.006,W,H*0.012);ctx.globalCompositeOperation='lighter';const amp=P.rippleAmp/1000*W*0.01;const step=H*0.018;const n=Math.floor((H-hy)/step);for(const L of S.lamps){ctx.fillStyle=L.c;for(let k=0;k<n;k++){const y=hy+H*0.008+k*step;const w=W*0.008*(1+k*0.18);const off=Math.sin(t*1.3+k*0.9+L.ph)*amp*(1+k*0.15)+Math.sin(t*0.7+k*1.7)*amp*0.5;ctx.globalAlpha=Math.max(0,0.55-k*0.55/n)*(0.7+0.3*Math.sin(t*2+k+L.ph));ctx.fillRect(L.x-w/2+off,y,w,step*0.45)}}ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;for(const L of S.lamps){const top=hy-L.h;ctx.strokeStyle=P.bank;ctx.lineWidth=Math.max(1,W*0.0025);ctx.beginPath();ctx.moveTo(L.x,hy);ctx.lineTo(L.x,top);ctx.stroke();const rad=W*0.035*(1+0.05*Math.sin(t+L.ph));const rg=ctx.createRadialGradient(L.x,top,0,L.x,top,rad);rg.addColorStop(0,'#fff8e0');rg.addColorStop(0.15,L.c);rg.addColorStop(1,'rgba(0,0,0,0)');ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.8;ctx.fillStyle=rg;ctx.fillRect(L.x-rad,top-rad,rad*2,rad*2);ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1}ctx.strokeStyle=P.rainColor;ctx.lineWidth=1;ctx.globalAlpha=P.rainAlpha/1000;ctx.beginPath();for(const d of S.rain){const y=(d.y+t*d.v)%H;const x=d.x-y*0.15;ctx.moveTo(x,y);ctx.lineTo(x-d.l*0.15,y+d.l)}ctx.stroke();for(const l of S.leaves){const y=(l.y+t*l.v)%(H*1.05)-H*0.025;const x=l.x+Math.sin(t*0.9+l.ph+y*0.01)*W*0.03;ctx.save();ctx.translate(x,y);ctx.rotate(l.rot+t*0.6+Math.sin(t+l.ph));ctx.globalAlpha=y>hy?0.55:0.85;ctx.fillStyle=l.c;ctx.beginPath();ctx.ellipse(0,0,l.s,l.s*0.5,0,0,6.2832);ctx.fill();ctx.restore()}ctx.globalAlpha=1}\n",
+  "code": "/**\n * art-sky の描画モジュール（renderer canvas2d バージョン 1 の作品コード）。\n *\n * この文字列がそのまま作品レコードの code に入り、ギャラリーの sandbox 内で実行される。\n * そのため import は使わず、このファイルだけで完結させる。\n *   - env.params：estimate.js が作った状態（感情の割合、投稿のペース、時刻など）に seed と style を足したもの\n *   - env.time  ：アニメーション作品の経過秒数（線の画風は静止画なので常に 0）\n * 乱数は params.seed（DID から作る）だけを使うので、同じパラメーターからは必ず同じ絵になる。\n */\n// =====================================================================\n// 定数\n// =====================================================================\nconst EMOTIONS = [\"joy\",\"calm\",\"excitement\",\"nostalgia\",\"sadness\",\"anxiety\",\"anger\",\"neutral\"];\nconst EMOTION_JA = { joy:\"喜び\", calm:\"穏やか\", excitement:\"高揚\", nostalgia:\"懐かしさ\", sadness:\"悲しみ\", anxiety:\"不安\", anger:\"怒り\", neutral:\"ふつう\" };\n\n/** 感情 → 渦の形（0 は円、3 以上は多角形の辺の数） */\nconst SHAPE = { anger:3, anxiety:3, excitement:4, nostalgia:5, neutral:5, joy:6, calm:0, sadness:0 };\n/** 感情 → 線の色 [色相, 彩度, 明度]。細い線を重ねる前提で、やや落ち着いた色 */\nconst COLOR = {\n  joy:[40,75,48], calm:[185,55,42], excitement:[12,75,52], nostalgia:[28,45,45],\n  sadness:[215,50,45], anxiety:[270,25,48], anger:[355,70,45], neutral:[30,8,40],\n};\n/** 感情 → 動きの激しさ（0〜1） */\nconst ENERGY = { anger:1, excitement:0.9, anxiety:0.75, joy:0.6, neutral:0.3, nostalgia:0.2, sadness:0.15, calm:0.1 };\n\nconst MAX_AGENTS = 1600, MAX_VORTICES = 5, MAX_STREAMS = 3;\n\n// =====================================================================\n// 乱数とハッシュ\n// =====================================================================\nfunction mulberry32(a) {\n  return function () {\n    a |= 0; a = (a + 0x6d2b79f5) | 0;\n    let t = Math.imul(a ^ (a >>> 15), 1 | a);\n    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;\n    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;\n  };\n}\nfunction fnv1a(str) {\n  let h = 0x811c9dc5;\n  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }\n  return h >>> 0;\n}\nconst seedFromDid = (did) => fnv1a(did);\n/** シードと番号から、点ごとの独立した乱数列を作る（本数が変わっても他の点に影響しない） */\nconst subRand = (seed, i) => mulberry32(Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(i + 1, 0xc2b2ae35));\nconst lerp = (a, b, t) => a + (b - a) * t;\nconst clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));\nconst TAU = Math.PI * 2;\n\n// =====================================================================\n// 状態の時刻\n// =====================================================================\n/** 状態の minute（その日の何分目か）→ 時（小数） */\nconst hourOf = (s) => s.minute / 60;\n\n// =====================================================================\n// 状態 → 描画パラメーター\n// =====================================================================\nfunction skyOf(hour) {\n  // 朝：生成り、昼：白に近い水色、夕：淡い桃、夜：深い藍\n  const keys = [\n    { h:0, c:[228, 30, 14] }, { h:4.5, c:[235, 25, 18] }, { h:6, c:[30, 40, 90] }, { h:8, c:[45, 45, 95] },\n    { h:12, c:[195, 30, 96] }, { h:16.5, c:[25, 45, 94] }, { h:18.5, c:[12, 40, 89] }, { h:20, c:[245, 25, 22] }, { h:24, c:[228, 30, 14] },\n  ];\n  let i = 0; while (keys[i + 1].h <= hour) i++;\n  const a = keys[i], b = keys[i + 1], t = (hour - a.h) / (b.h - a.h);\n  const d = ((b.c[0] - a.c[0] + 540) % 360) - 180;\n  return [(a.c[0] + d * t + 360) % 360, lerp(a.c[1], b.c[1], t), lerp(a.c[2], b.c[2], t)];\n}\n\nfunction toDrawParams(s) {\n  const a = s.activity / 1000, dyn = s.exclaim / 1000;\n  const energy = EMOTIONS.reduce((acc, e) => acc + (s.mix[e] / 1000) * ENERGY[e], 0);\n  const sky = skyOf(hourOf(s));\n  return {\n    mix: s.mix, sky, dark: sky[2] < 50,\n    agents: Math.round(lerp(150, MAX_AGENTS, Math.pow(a, 0.9))),   // 線の本数\n    steps: Math.round(lerp(120, 320, a)),                           // 線の長さ\n    vortices: 1 + Math.round(dyn * (MAX_VORTICES - 1)),             // 渦の数\n    vortexPull: lerp(0.7, 1.8, dyn),                                // 渦の強さ\n    waviness: lerp(1.0, 3.2, dyn),                                  // 流れのうねり\n    speed: lerp(1.1, 2.2, energy),                                  // 進む速さ\n    jitter: lerp(0.03, 0.35, energy),                               // ふらつき\n    curl: lerp(0.0, 0.32, energy),                                  // 点ごとの回転癖（輪ができる）\n    follow: lerp(0.35, 0.12, energy),                               // 流れに従う強さ\n    energy, dyn,\n    sat: lerp(0.6, 1.15, (s.emoji ?? 200) / 1000),                 // 絵文字が多いほど鮮やか\n    sizeK: lerp(0.8, 1.35, clamp((s.length ?? 40) / 120, 0, 1)),     // 長文の人ほど図形が大きい\n    spreadK: lerp(0.7, 1.4, (s.spread ?? 500) / 1000),              // 投稿時刻がばらつく人ほど散らばる\n  };\n}\n\nfunction pickEmotion(mix, r) {\n  let acc = 0;\n  for (const e of EMOTIONS) { acc += mix[e] / 1000; if (r < acc) return e; }\n  return \"neutral\";\n}\nfunction hsl([h, s, l], alpha = 1, dl = 0) { return `hsl(${h} ${s}% ${clamp(l + dl, 0, 100)}% / ${alpha})`; }\n\n/** 多角形の渦の、角度 θ での半径（外接円を 1 とする）。円なら常に 1 */\nfunction polyRadius(sides, theta) {\n  if (sides === 0) return 1;\n  const k = TAU / sides;\n  const t = ((theta % k) + k) % k - k / 2;\n  return Math.cos(Math.PI / sides) / Math.cos(t);\n}\n\n// =====================================================================\n// 流れの場：ゆるい流れ ＋ 帯（流れが集まる道） ＋ 渦（感情の形）\n// 座標は短い辺を 1 とした値で計算するので、キャンバスの大きさが違っても同じ絵になる\n// =====================================================================\nfunction makeField(seed, p) {\n  const r = mulberry32(seed ^ 0xa5a5a5a5);\n  const base = r() * TAU;\n  const waves = Array.from({ length: 3 }, () => ({ fx: lerp(0.5, 1.5, r()), fy: lerp(0.5, 1.5, r()), px: r() * TAU, py: r() * TAU, amp: lerp(0.4, 1, r()) }));\n\n  const vortices = Array.from({ length: MAX_VORTICES }, () => ({\n    x: lerp(0.15, 0.85, r()), y: lerp(0.15, 0.85, r()),\n    R: lerp(0.05, 0.11, r()), spin: r() < 0.5 ? -1 : 1, rot: r() * TAU, emoR: r(),\n  })).slice(0, p.vortices).map((v) => ({ ...v, emo: pickEmotion(p.mix, v.emoR) }));\n\n  const streams = Array.from({ length: MAX_STREAMS }, () => ({\n    ang: r() * Math.PI, off: lerp(-0.25, 0.25, r()), bend: lerp(-0.6, 0.6, r()), w: lerp(0.03, 0.07, r()), emoR: r(),\n  })).map((s) => ({ ...s, emo: pickEmotion(p.mix, s.emoR) }));\n\n  function vel(x, y) {\n    // ゆるい流れ\n    let ang = base;\n    for (const w of waves) ang += w.amp * p.waviness * 0.5 * Math.sin(w.fx * x * TAU + w.px) * Math.cos(w.fy * y * TAU + w.py);\n    let vx = Math.cos(ang) * 0.6, vy = Math.sin(ang) * 0.6;\n\n    // 帯：中心線に引き寄せ、線に沿って流す\n    for (const s of streams) {\n      const cx = x - 0.5, cy = y - 0.5;\n      const ux = Math.cos(s.ang), uy = Math.sin(s.ang);\n      const along = cx * ux + cy * uy;\n      const across = -cx * uy + cy * ux - s.off - s.bend * along * along;\n      const wgt = Math.exp(-(across * across) / (2 * s.w * s.w * 9));\n      vx += wgt * (ux * 1.4 + uy * across * 6);\n      vy += wgt * (uy * 1.4 - ux * across * 6);\n    }\n\n    // 渦：多角形の軌道に沿って回す\n    let cap = 0;\n    for (const v of vortices) {\n      const dx = x - v.x, dy = y - v.y, d = Math.hypot(dx, dy) + 1e-6;\n      const th = Math.atan2(dy, dx);\n      const sides = SHAPE[v.emo];\n      // 法線：円なら中心から外向き、多角形ならいま近い辺の外向き\n      let na = th, target = v.R;\n      if (sides > 0) {\n        const k = TAU / sides, phi = ((th - v.rot) % TAU + TAU) % TAU;\n        na = v.rot + Math.floor(phi / k) * k + k / 2;\n        target = v.R * Math.cos(Math.PI / sides);\n      }\n      const nx = Math.cos(na), ny = Math.sin(na);\n      const dn = dx * nx + dy * ny;                    // 辺（または円）までの距離\n      const wgt = p.vortexPull * Math.exp(-(d * d) / (2 * (v.R * 2.6) ** 2));\n      const corr = clamp((target - dn) / v.R, -1.5, 1.5);\n      if (d < v.R * 1.6) cap = Math.max(cap, 1);\n      vx += wgt * (-ny * v.spin * 2.2 + nx * corr * 2.4);\n      vy += wgt * (nx * v.spin * 2.2 + ny * corr * 2.4);\n    }\n    return [vx, vy, cap];\n  }\n  return { vel, vortices, streams };\n}\n\n// =====================================================================\n// 描画：点を歩かせて線を引く。advance(n) で n 歩ずつ進める（過程を見せるため）\n// =====================================================================\nfunction createPainter(ctx, w, h, s, seed, density = 1) {\n  const p = toDrawParams(s);\n  const field = makeField(seed, p);\n  const min = Math.min(w, h), ox = (w - min) / 2, oy = (h - min) / 2;\n\n  // 背景\n  const g = ctx.createLinearGradient(0, 0, 0, h);\n  g.addColorStop(0, hsl(p.sky, 1, p.dark ? -3 : 2));\n  g.addColorStop(1, hsl(p.sky, 1, p.dark ? 4 : -3));\n  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);\n\n  // 点：近くの帯や渦の感情の色を取りやすくする（色の帯ができる）\n  const n = Math.round(p.agents * density);\n  const agents = [];\n  for (let i = 0; i < MAX_AGENTS; i++) {\n    if (i >= n) break;\n    const r = subRand(seed, i);\n    const x = lerp(-0.1, 1.1, r()), y = lerp(-0.1, 1.1, r());\n    let emo = pickEmotion(p.mix, r());\n    const local = r();\n    for (const v of field.vortices) if (Math.hypot(x - v.x, y - v.y) < v.R * 3 && local < 0.75) emo = v.emo;\n    const inkR = r();\n    const ink = inkR < 0.07;\n    const color = ink ? (p.dark ? [40, 15, 85] : [30, 10, 12]) : COLOR[emo];\n    const alpha = lerp(0.12, 0.4, r()) * (density < 1 ? 1.4 : 1);\n    const curl = (r() - 0.5) * 2 * p.curl * (r() < 0.6 ? 1 : 0.2);\n    agents.push({\n      x, y, r, curl, heading: null, trapped: 0, dead: false,\n      stroke: hsl(color, alpha, p.dark && !ink ? 22 : 0), width: inkR > 0.93 ? 1.1 : 0.55,\n    });\n  }\n\n  const step = (0.0042 * p.speed);\n  const TRAP_LIMIT = 70;  // 渦の中を回り続けたら止める（塊にならないように）\n  let done = 0;\n  ctx.lineCap = \"round\"; ctx.lineJoin = \"round\";\n  return {\n    total: p.steps,\n    advance(k) {\n      const upto = Math.min(p.steps, done + k);\n      const lw = Math.max(0.5, min / 600);\n      for (const a of agents) {\n        if (a.dead) continue;\n        ctx.strokeStyle = a.stroke; ctx.lineWidth = a.width * lw;\n        ctx.beginPath(); ctx.moveTo(ox + a.x * min, oy + a.y * min);\n        for (let t = done; t < upto; t++) {\n          const [vx, vy, cap] = field.vel(a.x, a.y);\n          a.trapped = cap ? a.trapped + 1 : 0;\n          if (a.trapped > TRAP_LIMIT) { a.dead = true; break; }\n          const target = Math.atan2(vy, vx);\n          if (a.heading === null) a.heading = target;\n          // 向きに慣性を持たせ、回転癖とふらつきを足してから流れの向きへ寄せる\n          a.heading += a.curl + (a.r() - 0.5) * p.jitter;\n          const diff = ((target - a.heading + Math.PI * 3) % TAU) - Math.PI;\n          a.heading += diff * p.follow;\n          a.x += Math.cos(a.heading) * step; a.y += Math.sin(a.heading) * step;\n          ctx.lineTo(ox + a.x * min, oy + a.y * min);\n        }\n        ctx.stroke();\n      }\n      done = upto;\n      return done >= p.steps;\n    },\n  };\n}\n\nfunction drawLinesFull(ctx, w, h, s, seed, density) { const pt = createPainter(ctx, w, h, s, seed, density); pt.advance(pt.total); }\n\n// =====================================================================\n// 多角形バージョン：画面を多角形に分割し、各区画に入れ子の多角形を描く\n//   投稿数     → 区画の数と、入れ子の重なりの数（密度）\n//   感情       → 区画ごとの形（正多角形の辺の数）、色、動きの激しさ\n//   「!」の割合 → ダイナミックさ（分割線の傾き、ねじれ、大きさの差）\n//   DID        → シード。区画は分割の経路ごとに乱数を持つので、状態が少し変わっても構図は崩れない\n// =====================================================================\nconst area = (pts) => Math.abs(pts.reduce((a, [x, y], i) => { const [x2, y2] = pts[(i + 1) % pts.length]; return a + x * y2 - x2 * y; }, 0)) / 2;\nconst centroid = (pts) => { let x = 0, y = 0; for (const p of pts) { x += p[0]; y += p[1]; } return [x / pts.length, y / pts.length]; };\n\n/** 凸多角形を、点 (px, py) を通る角度 ang の直線で 2 つに分ける */\nfunction splitPoly(pts, px, py, ang) {\n  const nx = -Math.sin(ang), ny = Math.cos(ang);\n  const side = ([x, y]) => (x - px) * nx + (y - py) * ny;\n  const a = [], b = [];\n  for (let i = 0; i < pts.length; i++) {\n    const p = pts[i], q = pts[(i + 1) % pts.length];\n    const sp = side(p), sq = side(q);\n    (sp >= 0 ? a : b).push(p);\n    if ((sp >= 0) !== (sq >= 0)) {\n      const t = sp / (sp - sq);\n      const m = [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];\n      a.push(m); b.push(m);\n    }\n  }\n  return a.length >= 3 && b.length >= 3 ? [a, b] : null;\n}\n\n/** 区画を作る。いちばん大きい区画から順に分けるので、数が 1 つ増えても既存の分け方は変わらない */\nfunction makeCells(seed, s) {\n  const dyn = s.exclaim / 1000;\n  const target = Math.round(lerp(5, 48, Math.pow(s.activity / 1000, 0.85)));\n  let cells = [{ pts: [[0, 0], [1, 0], [1, 1], [0, 1]], path: \"r\" }];\n  while (cells.length < target) {\n    cells.sort((x, y) => area(y.pts) - area(x.pts));\n    const c = cells.shift();\n    const r = mulberry32(fnv1a(c.path) ^ seed);\n    const [cx, cy] = centroid(c.pts);\n    const off = lerp(0.15, 0.4, dyn);\n    const xs = c.pts.map((p) => p[0]), ys = c.pts.map((p) => p[1]);\n    const bw = Math.max(...xs) - Math.min(...xs), bh = Math.max(...ys) - Math.min(...ys);\n    const px = cx + (r() - 0.5) * bw * off * 2, py = cy + (r() - 0.5) * bh * off * 2;\n    // 落ち着いた人は縦横の分割、ダイナミックな人ほど斜めの分割\n    const axis = bw > bh ? Math.PI / 2 : 0;\n    const ang = axis + (r() < 0.25 ? Math.PI / 2 : 0) + (r() - 0.5) * Math.PI * lerp(0.08, 0.9, dyn);\n    const parts = splitPoly(c.pts, px, py, ang);\n    if (!parts) { cells.push({ ...c, path: c.path + \"x\" }); continue; }\n    cells.push({ pts: parts[0], path: c.path + \"0\" }, { pts: parts[1], path: c.path + \"1\" });\n  }\n  return cells;\n}\n\nfunction drawPolygonArt(ctx, w, h, s, seed, time = 0) {\n  const p = toDrawParams(s);\n  const min = Math.min(w, h), ox = (w - min) / 2, oy = (h - min) / 2;\n  const X = (x) => ox + x * min, Y = (y) => oy + y * min;\n  const a = s.activity / 1000, dyn = p.dyn;\n\n  // 背景\n  const g = ctx.createLinearGradient(0, 0, 0, h);\n  g.addColorStop(0, hsl(p.sky, 1, p.dark ? -3 : 2));\n  g.addColorStop(1, hsl(p.sky, 1, p.dark ? 4 : -3));\n  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);\n\n  const margin = 0.06;\n  const cells = makeCells(seed, s);\n  const lw = Math.max(0.5, min / 600);\n  const ink = p.dark ? [40, 15, 85] : [30, 10, 15];\n  ctx.lineJoin = \"round\";\n\n  for (const c of cells) {\n    const r = mulberry32(fnv1a(c.path + \"/draw\") ^ seed);\n    const emo = pickEmotion(p.mix, r());\n    const color = COLOR[emo];\n    const kind = r();                   // 区画の描き方\n    const quiet = r() < 0.16;           // 何も描かない区画（息継ぎ）\n    const dir = r() < 0.5 ? -1 : 1;\n    const phase = r() * TAU;\n    const rot0 = r() * TAU;\n    const fillA = lerp(0.12, 0.55, r());\n    // 区画を余白の内側に収め、少し内側に縮めて隙間を作る\n    const pts = c.pts.map(([x, y]) => [margin + x * (1 - margin * 2), margin + y * (1 - margin * 2)]);\n    const [cx, cy] = centroid(pts);\n    const gap = lerp(0.9, 0.97, r());\n    const cell = pts.map(([x, y]) => [cx + (x - cx) * gap, cy + (y - cy) * gap]);\n\n    // 動き：感情の激しさで、ねじれと伸び縮みが揺れる\n    const wobble = Math.sin(time * lerp(0.2, 1.4, ENERGY[emo]) + phase) * ENERGY[emo];\n    const layers = Math.max(1, Math.round(lerp(2, 12, a) * lerp(0.6, 1.2, r())));\n    const twist = dir * (lerp(0.02, 0.35, dyn) + wobble * 0.12);\n\n    ctx.save();\n    ctx.beginPath(); cell.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)))); ctx.closePath();\n    ctx.strokeStyle = hsl(ink, 0.35); ctx.lineWidth = 0.6 * lw; ctx.stroke();\n    if (quiet) { ctx.restore(); continue; }\n    ctx.clip();\n\n    if (kind < 0.5) {\n      // 区画そのものを、重心に向かって縮めながらねじって重ねる\n      for (let j = 0; j < layers; j++) {\n        const t = j / layers, k = (1 - t * 0.92) * (1 + wobble * 0.03), ang = twist * j;\n        const c2 = Math.cos(ang), s2 = Math.sin(ang);\n        ctx.beginPath();\n        cell.forEach(([x, y], i) => {\n          const dx = (x - cx) * k, dy = (y - cy) * k;\n          const qx = cx + dx * c2 - dy * s2, qy = cy + dx * s2 + dy * c2;\n          i ? ctx.lineTo(X(qx), Y(qy)) : ctx.moveTo(X(qx), Y(qy));\n        });\n        ctx.closePath();\n        if (j === 0) { ctx.fillStyle = hsl(color, fillA * 0.6); ctx.fill(); }\n        ctx.strokeStyle = hsl(color, lerp(0.85, 0.35, t), p.dark ? 18 : 0); ctx.lineWidth = lw * (j === 0 ? 1.2 : 0.8); ctx.stroke();\n      }\n    } else {\n      // 感情の正多角形を、区画の中に入れ子で描く\n      const sides = SHAPE[emo];\n      const inr = Math.min(...cell.map(([x, y], i) => {\n        const [x2, y2] = cell[(i + 1) % cell.length];\n        return Math.abs((x2 - x) * (y - cy) - (x - cx) * (y2 - y)) / Math.hypot(x2 - x, y2 - y);\n      }));\n      // ダイナミックな人ほど、区画からはみ出す大きな形が出る（はみ出た分は切り取られる）\n      const R = inr * lerp(0.95, lerp(1.0, 1.9, dyn), r());\n      for (let j = 0; j < layers; j++) {\n        const t = j / layers, rr = R * (1 - t * 0.88) * (1 + wobble * 0.04);\n        const rot = rot0 + twist * j * 1.5 + time * 0.05 * dir * ENERGY[emo];\n        ctx.beginPath();\n        if (sides === 0) ctx.arc(X(cx), Y(cy), rr * min, 0, TAU);\n        else for (let i = 0; i <= sides; i++) {\n          const an = rot + (i / sides) * TAU;\n          const qx = cx + Math.cos(an) * rr, qy = cy + Math.sin(an) * rr;\n          i ? ctx.lineTo(X(qx), Y(qy)) : ctx.moveTo(X(qx), Y(qy));\n        }\n        if (j === 0 || (j === layers - 1 && r() < 0.5)) { ctx.fillStyle = hsl(color, j === 0 ? fillA : 0.8); ctx.fill(); }\n        ctx.strokeStyle = hsl(color, lerp(0.9, 0.4, t), p.dark ? 18 : -8); ctx.lineWidth = lw; ctx.stroke();\n      }\n    }\n    ctx.restore();\n  }\n}\n\n// =====================================================================\n// 軌道バージョン：暗い空に、半透明の多角形が渦巻きの軌道に沿って散らばる\n//   投稿数     → 多角形・線・光の粒の数（密度）\n//   感情       → 多角形の形と色、回転と公転の速さ（動きの激しさ）\n//   「!」の割合 → ダイナミックさ（腕の数、大きさの差、形のゆがみ、軌道からのはみ出し）\n//   時間帯     → 背景の色（どの時間帯も暗めの空にして、多角形を光らせる）\n//   DID        → シード\n// =====================================================================\nconst NEON = {\n  joy:[52,100,62], calm:[186,95,58], excitement:[28,100,60], nostalgia:[18,85,74],\n  sadness:[212,90,64], anxiety:[272,75,68], anger:[335,95,62], neutral:[200,20,82],\n};\nconst MAX_SHAPES = 260, MAX_SPARKS = 700, MAX_RAYS = 48;\n\nfunction nightSky(hour) {\n  // 朝：深い青緑、昼：深い青、夕：深い紫、夜：ほぼ黒の藍\n  const keys = [\n    { h:0, c:[228, 45, 7] }, { h:5, c:[235, 40, 9] }, { h:7, c:[192, 45, 13] },\n    { h:12, c:[214, 50, 16] }, { h:17, c:[282, 40, 14] }, { h:20, c:[245, 45, 9] }, { h:24, c:[228, 45, 7] },\n  ];\n  let i = 0; while (keys[i + 1].h <= hour) i++;\n  const a = keys[i], b = keys[i + 1], t = (hour - a.h) / (b.h - a.h);\n  const d = ((b.c[0] - a.c[0] + 540) % 360) - 180;\n  return [(a.c[0] + d * t + 360) % 360, lerp(a.c[1], b.c[1], t), lerp(a.c[2], b.c[2], t)];\n}\n\nfunction drawOrbitArt(ctx, w, h, s, seed, time = 0) {\n  const p = toDrawParams(s);\n  const a = s.activity / 1000, dyn = p.dyn;\n  const neon = (emo) => { const c = NEON[emo]; return [c[0], clamp(c[1] * p.sat, 0, 100), c[2]]; };\n  const min = Math.min(w, h), lw = Math.max(0.6, min / 600);\n  const g0 = mulberry32(seed ^ 0x6a09e667);\n\n  // 渦巻きの中心と形（DID で決まる）\n  const cx = w * lerp(0.4, 0.6, g0()), cy = h * lerp(0.4, 0.6, g0());\n  const squash = lerp(0.75, 1, g0()), tilt = g0() * TAU;\n  const arms = 1 + Math.round(dyn * 2 + g0() * 0.6);\n  const turns = lerp(0.9, 1.6, g0());\n  const spin = g0() < 0.5 ? -1 : 1;\n  const orbitSpeed = spin * lerp(0.01, 0.06, p.energy);   // 公転の速さ\n  const maxR = Math.hypot(w, h) * 0.55;\n\n  /** 渦巻き上の位置。u は中心からの進み具合（0〜1）、off は軌道からのずれ */\n  const spiral = (arm, u, off) => {\n    const th = (arm / arms) * TAU + u * turns * TAU + time * orbitSpeed;\n    const rr = lerp(0.06, 1, u) * maxR + off * min;\n    const x0 = Math.cos(th) * rr, y0 = Math.sin(th) * rr * squash;\n    return [cx + x0 * Math.cos(tilt) - y0 * Math.sin(tilt), cy + x0 * Math.sin(tilt) + y0 * Math.cos(tilt), th];\n  };\n\n  // --- 背景：空の色＋中心のぼんやりした明るさ\n  const sky = nightSky(hourOf(s));\n  ctx.fillStyle = hsl(sky); ctx.fillRect(0, 0, w, h);\n  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR);\n  glow.addColorStop(0, hsl([sky[0], sky[1], sky[2] + 10], 0.9));\n  glow.addColorStop(1, hsl(sky, 0));\n  ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h);\n\n  // --- ガイド線：中心を通る十字の点線と、薄い格子\n  ctx.save();\n  ctx.strokeStyle = hsl([195, 60, 70], 0.28); ctx.lineWidth = lw;\n  ctx.setLineDash([1.5 * lw, 5 * lw]);\n  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.stroke();\n  ctx.strokeStyle = hsl([200, 40, 60], 0.12); ctx.setLineDash([]);\n  const gridN = 2 + Math.round(a * 4);\n  ctx.beginPath();\n  for (let i = 0; i < gridN; i++) {\n    const gx = w * g0(), gy = h * g0();\n    ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.moveTo(0, gy); ctx.lineTo(w, gy);\n  }\n  ctx.stroke();\n\n  // --- 軌道：破線の楕円と渦巻き\n  for (let arm = 0; arm < arms; arm++) {\n    const emo = pickEmotion(p.mix, g0());\n    ctx.strokeStyle = hsl(neon(emo), 0.4); ctx.lineWidth = lw;\n    ctx.setLineDash([4 * lw, 7 * lw]);\n    ctx.beginPath();\n    for (let k = 0; k <= 160; k++) { const [x, y] = spiral(arm, k / 160, 0); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }\n    ctx.stroke();\n  }\n  for (let k = 0; k < 2; k++) {\n    ctx.strokeStyle = hsl(neon(pickEmotion(p.mix, g0())), 0.25);\n    ctx.setLineDash([2 * lw, 9 * lw]);\n    ctx.beginPath(); ctx.ellipse(cx, cy, maxR * lerp(0.35, 0.8, g0()), maxR * lerp(0.35, 0.8, g0()) * squash, tilt, 0, TAU); ctx.stroke();\n  }\n  ctx.restore();\n\n  // --- 多角形の配置を先に決める（光の線を多角形に向けて引くため）\n  const nShapes = Math.round(lerp(28, MAX_SHAPES, Math.pow(a, 0.9)));\n  const shapes = [];\n  for (let i = 0; i < nShapes; i++) {\n    const r = subRand(seed ^ 0x3c6ef372, i);\n    const emo = pickEmotion(p.mix, r());\n    const arm = Math.floor(r() * arms);\n    const u = Math.pow(r(), 0.8);\n    const spread = (r() - 0.5) * lerp(0.08, 0.3, dyn) * p.spreadK * (r() < 0.15 ? 3 : 1);\n    const [x, y, th] = spiral(arm, u, spread);\n    const size = p.sizeK * min * lerp(0.018, lerp(0.05, 0.1, dyn), Math.pow(r(), lerp(2.2, 1.2, dyn)));\n    const sides = SHAPE[emo] || 0;\n    const warp = Array.from({ length: 6 }, () => 1 + (r() - 0.5) * lerp(0.1, 0.8, dyn));\n    const rotSpeed = (r() - 0.5) * ENERGY[emo] * 1.6;\n    const rot = th + r() * TAU + time * rotSpeed;\n    const style = r();     // 塗り＋線 / 線だけ / 塗りだけ\n    const alpha = lerp(0.35, 0.85, r());\n    const glowy = r() < 0.14;\n    shapes.push({ x, y, size, sides, warp, rot, emo, style, alpha, glowy, u });\n  }\n\n  // --- 光の線：中心から一部の多角形へ伸びる細い線\n  const nRays = Math.round(lerp(4, MAX_RAYS, a));\n  ctx.save(); ctx.lineWidth = 0.7 * lw;\n  for (let i = 0; i < Math.min(nRays, shapes.length); i++) {\n    const sh = shapes[(i * 7919) % shapes.length];\n    const ox = cx + (g0() - 0.5) * min * 0.04, oy = cy + (g0() - 0.5) * min * 0.04;\n    ctx.strokeStyle = hsl(neon(sh.emo), lerp(0.25, 0.6, g0()));\n    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(sh.x, sh.y); ctx.stroke();\n  }\n  ctx.restore();\n\n  // --- 光の粒：渦巻きに沿ってまく\n  const nSparks = Math.round(lerp(60, MAX_SPARKS, a));\n  for (let i = 0; i < nSparks; i++) {\n    const r = subRand(seed ^ 0xbb67ae85, i);\n    const [x, y] = spiral(Math.floor(r() * arms), r(), (r() - 0.5) * 0.35);\n    const tw = 0.5 + 0.5 * Math.sin(time * 2 + i);\n    ctx.fillStyle = hsl(neon(pickEmotion(p.mix, r())), lerp(0.2, 0.8, r()) * (0.6 + 0.4 * tw));\n    const sz = (r() < 0.9 ? 1 : 2) * lw;\n    ctx.fillRect(x, y, sz, sz);\n  }\n\n  // --- 多角形：外側（大きい u）から描いて、中心側を手前にする\n  shapes.sort((p1, p2) => p2.u - p1.u);\n  for (const sh of shapes) {\n    const col = neon(sh.emo);\n    ctx.beginPath();\n    if (sh.sides === 0) ctx.arc(sh.x, sh.y, sh.size * 0.8, 0, TAU);\n    else for (let k = 0; k <= sh.sides; k++) {\n      const an = sh.rot + (k / sh.sides) * TAU, rr = sh.size * sh.warp[k % sh.sides % 6];\n      const px = sh.x + Math.cos(an) * rr, py = sh.y + Math.sin(an) * rr;\n      k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);\n    }\n    ctx.closePath();\n    if (sh.glowy) { ctx.shadowColor = hsl(col, 0.9); ctx.shadowBlur = 14 * lw; }\n    if (sh.style < 0.75) {\n      // 半透明のグラデーション。片側が明るく、反対側が透ける\n      const gr = ctx.createLinearGradient(sh.x - sh.size, sh.y - sh.size, sh.x + sh.size, sh.y + sh.size);\n      gr.addColorStop(0, hsl(col, sh.alpha, 12));\n      gr.addColorStop(1, hsl(col, sh.alpha * 0.25, -12));\n      ctx.fillStyle = gr; ctx.fill();\n    }\n    ctx.shadowBlur = 0;\n    if (sh.style > 0.45) { ctx.strokeStyle = hsl(col, 0.9, 8); ctx.lineWidth = 1.1 * lw; ctx.stroke(); }\n  }\n}\n\nfunction drawArt(ctx, w, h, s, seed, style, density = 1, time = 0) {\n  if (style === \"orbit\") drawOrbitArt(ctx, w, h, s, seed, time);\n  else if (style === \"poly\") drawPolygonArt(ctx, w, h, s, seed, time);\n  else drawLinesFull(ctx, w, h, s, seed, density);\n}\n\n\nexport default function draw(ctx, env) {\n  const s = env.params;\n  const seed = (s.seed >>> 0) || 1;\n  drawArt(ctx, env.width, env.height, s, seed, s.style || \"orbit\", 1, env.time || 0);\n}\n",
   "params": {
-    "sky": [
-      "#0b1030",
-      "#1c2350",
-      "#3a3460"
-    ],
-    "water": [
-      "#141a3a",
-      "#05070f"
-    ],
-    "ridge": [
-      "#1a1a33",
-      "#0f0f22"
-    ],
-    "bank": "#07080f",
-    "autumn": [
-      "#c8402c",
-      "#e08a2e",
-      "#e8c547",
-      "#a8322a"
-    ],
-    "lamp": [
-      "#ffcf7a",
-      "#ffb35c",
-      "#ffe2a0"
-    ],
-    "rainColor": "#9fb4e0",
-    "autumnGlow": 420,
-    "horizon": 470,
-    "lampCount": 9,
-    "leafCount": 38,
-    "rainCount": 70,
-    "rainAlpha": 90,
-    "starCount": 40,
-    "rippleAmp": 700,
-    "speed": 1000
+    "v": 1,
+    "mix": {
+      "joy": 152,
+      "calm": 196,
+      "excitement": 113,
+      "nostalgia": 153,
+      "sadness": 147,
+      "anxiety": 159,
+      "anger": 0,
+      "neutral": 80
+    },
+    "activity": 199,
+    "minute": 1315,
+    "spread": 414,
+    "exclaim": 167,
+    "emoji": 0,
+    "length": 16,
+    "lastPostAt": "2026-11-13T13:41:00.000Z",
+    "posts": 0,
+    "style": "orbit",
+    "base": {
+      "mix": {
+        "joy": 152,
+        "calm": 196,
+        "excitement": 113,
+        "nostalgia": 153,
+        "sadness": 147,
+        "anxiety": 159,
+        "anger": 0,
+        "neutral": 80
+      },
+      "activity": 199,
+      "minute": 1315,
+      "exclaim": 167,
+      "emoji": 0,
+      "length": 16
+    },
+    "seed": 2859757466
   },
-  "seed": 1776051317,
+  "seed": 2859757466,
   "aspectRatio": {
-    "width": 4,
-    "height": 5
+    "width": 1,
+    "height": 1
   },
-  "title": "水面に揺れる灯り",
   "generator": {
-    "id": "artsky-claude",
-    "version": "0.1.0",
-    "model": "claude-opus-5-5"
+    "id": "artsky-rules",
+    "version": "0.2.0",
+    "model": "artsky-rules-1"
   },
   "inputs": {
-    "postsSampled": 8,
-    "oldestPostAt": "2026-11-08T01:15:00.000Z",
-    "newestPostAt": "2026-11-13T22:41:00.000Z",
+    "postsSampled": 6,
+    "oldestPostAt": "2026-11-08T12:00:00.000Z",
+    "newestPostAt": "2026-11-13T13:41:00.000Z",
     "profile": {
-      "postsCount": 2841,
-      "followersCount": 312,
-      "followsCount": 198,
-      "accountCreatedAt": "2023-05-02T09:14:00.000Z"
+      "postsCount": 2841
     }
   },
   "state": {
-    "pieces": 1,
-    "title": "水面に揺れる灯り",
-    "language": "ja",
-    "structure": "night sky over twin autumn-tinted mountain ridges, riverbank horizon at 47%, row of streetlamps with glows, shimmering lamp reflections as stacked wobbling bars on dark water, faint slanted rain, drifting autumn leaves",
-    "motifs": [
-      "streetlamp reflections on river",
-      "autumn red-yellow gradient on ridges",
-      "falling leaves",
-      "soft rain",
-      "stars"
-    ],
-    "palette": {
-      "sky": "deep indigo",
-      "lamps": "warm amber",
-      "autumn": "red/orange/yellow"
-    },
-    "themes": [
-      "night walks",
-      "rain and books",
-      "seasons turning",
-      "ambient music",
-      "quiet satisfaction of coding",
-      "friends and laughter"
-    ],
-    "evolutionIdeas": "new posts can add lamps, shift season (winter: fewer leaves, snow instead of rain), warm the palette for joyful posts, increase ripple for energetic ones",
-    "aspect": "4:5",
-    "animated": true,
+    "generator": "rules",
+    "style": "orbit",
     "analysis": {
-      "valence": 550,
-      "arousal": 290,
+      "valence": 90,
+      "arousal": 408,
       "dominant": "calm",
       "mix": {
-        "joy": 220,
-        "calm": 380,
-        "excitement": 60,
-        "nostalgia": 180,
-        "sadness": 50,
-        "anxiety": 40,
+        "joy": 152,
+        "calm": 196,
+        "excitement": 113,
+        "nostalgia": 153,
+        "sadness": 147,
+        "anxiety": 159,
         "anger": 0,
-        "neutral": 70
+        "neutral": 80
       },
       "personality": {
-        "openness": 720,
-        "conscientiousness": 600,
-        "extraversion": 420,
-        "agreeableness": 660,
-        "neuroticism": 380
+        "openness": 500,
+        "conscientiousness": 500,
+        "extraversion": 500,
+        "agreeableness": 500,
+        "neuroticism": 500
       }
     },
     "features": {
-      "postsAnalyzed": 8,
+      "postsAnalyzed": 6,
       "spanDays": 6,
-      "postsPerDayX100": 136,
-      "activity": 218,
-      "peakMinute": 375,
+      "postsPerDayX100": 118,
+      "activity": 199,
+      "peakMinute": 1317,
       "hourHistogram": [
-        0,
-        1,
-        0,
-        0,
-        1,
-        0,
-        1,
-        1,
-        1,
-        0,
         1,
         0,
         0,
@@ -144,13 +108,23 @@
         0,
         0,
         0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
         1,
         0,
+        1,
+        1,
+        1,
         0
       ],
-      "hourSpread": 654,
-      "avgLength": 31,
-      "exclaim": 0,
+      "hourSpread": 564,
+      "avgLength": 15,
+      "exclaim": 167,
       "question": 0,
       "emoji": 0,
       "media": 0,
@@ -158,8 +132,8 @@
       "avgLikesX100": 0,
       "maxLikes": 0,
       "langCount": 0,
-      "vocabDiversity": 912
+      "vocabDiversity": 965
     }
   },
-  "createdAt": "2026-11-14T08:34:10.722Z"
+  "createdAt": "2026-11-17T00:00:00.000Z"
 }

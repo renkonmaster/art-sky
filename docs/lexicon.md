@@ -53,14 +53,16 @@ AT Protocol のデータモデルは小数を扱えず、小数を含むレコ�
 0〜1 の割合は 1000 倍した整数（‰）で表し、描画関数の中で 1000 で割る。
 生成側は保存前に小数がないことを確かめ、あれば作り直させる。
 
-### `state` の中身（generator `artsky-claude`）
+### `state` の中身（generator `artsky-rules`）
 
-`state` の形は `generator.id` ごとに決める。`artsky-claude` では次の 2 つのキーを生成側が書き、
-それ以外のキーは Claude が次の作品のために自由に書く（パレット、モチーフ、作品数など）。
+`state` の形は `generator.id` ごとに決める。`artsky-rules` では次のキーを生成側が書く。
+描画に使う状態（感情の割合、投稿の多さ、時刻、画風など）は `params` に入れ、次の作品はそこから少しずつ動かす。
 
 | キー | 内容 |
 |---|---|
-| `analysis` | 投稿から推定した感情と個性の傾向。毎回更新する |
+| `generator` | `"rules"` |
+| `style` | 画風（`lines` `poly` `orbit`）。最初の作品で決め、以後は変えない |
+| `analysis` | 投稿から推定した感情の傾向。毎回更新する |
 | `features` | genesis の時点で直近の投稿から計算した特徴。以後の作品にそのまま引き継ぐ |
 
 `analysis`（値はすべて整数）
@@ -71,9 +73,9 @@ AT Protocol のデータモデルは小数を扱えず、小数を含むレコ�
 | `arousal` | 0〜1000 | 落ち着き〜興奮 |
 | `dominant` | | 最も強い感情（`mix` のキーのどれか） |
 | `mix` | 各 0〜1000、合計 1000 | `joy` `calm` `excitement` `nostalgia` `sadness` `anxiety` `anger` `neutral` の割合 |
-| `personality` | 各 0〜1000、500 が平均 | Big Five：`openness` `conscientiousness` `extraversion` `agreeableness` `neuroticism` |
+| `personality` | 各 0〜1000 | Big Five：`openness` `conscientiousness` `extraversion` `agreeableness` `neuroticism`。`artsky-rules` では推定せず、すべて 500 |
 
-genesis では直近の投稿全体から推定し、evolution では前作品の `analysis` を今回の投稿 1 件の分だけ動かす。
+genesis では直近の投稿全体から推定し、evolution では前作品の状態（`params`）を今回の投稿 1 件の分だけ動かす。
 
 `features`（値はすべて整数、割合は ‰）
 
@@ -92,7 +94,7 @@ genesis では直近の投稿全体から推定し、evolution では前作品�
 | `langCount` | 使われた言語の数 |
 | `vocabDiversity` | 語彙の多様さ（文字 2-gram の異なり数 ÷ 延べ数） |
 
-> **公開範囲**：PDS のレコードは誰でも読める。`analysis` には推定した性格の傾向が入るので、
+> **公開範囲**：PDS のレコードは誰でも読める。`analysis` には推定した感情の傾向が入るので、
 > 初回登録の同意画面で「推定結果が作品と一緒に公開される」ことを説明する（Plan.md 10 節）。
 
 ## 描画環境 `canvas2d` バージョン 1

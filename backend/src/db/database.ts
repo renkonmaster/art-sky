@@ -8,7 +8,7 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   did                TEXT PRIMARY KEY,
   handle             TEXT NOT NULL,
-  -- 外部 AI への送信と、推定結果の公開に同意した日時。NULL なら未登録
+  -- 推定結果の公開に同意した日時。NULL なら未登録
   consented_at       TEXT,
   generation_enabled INTEGER NOT NULL DEFAULT 1,
   listed             INTEGER NOT NULL DEFAULT 1,

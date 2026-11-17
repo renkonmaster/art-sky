@@ -31,7 +31,7 @@ PDS のレコードは公開されるので、推定結果も公開される（�
 | `src/auth/oauth.ts` | AT Protocol OAuth クライアント。求める権限は作品レコードの読み書きだけ |
 | `src/jetstream/consumer.ts` | Bluesky の投稿と作品レコードの変更を Jetstream で受け取る |
 | `src/jobs/` | 生成ジョブの状態管理、実行、ワーカー |
-| `src/generation/` | プロンプト、Claude 呼び出し、出力の検査、レコードの組み立て |
+| `src/generation/` | 投稿からの推定（rules.ts、`@art-sky/art` を使う）、レコードの組み立て |
 | `src/validation/chromium.ts` | 生成した `code` を Chromium で実行して確かめる |
 | `src/gallery/` | ギャラリーの索引（PDS の写し）と、PDS からの読み直し |
 | `src/bluesky/posts.ts` | プロフィール統計と直近の投稿の取得 |
@@ -57,7 +57,7 @@ pnpm dev                                # http://127.0.0.1:3000 で API、ワー
 pnpm test                               # ネット不要（Chromium の検証テストは、Chromium があれば実行する）
 pnpm typecheck
 pnpm e2e                                # ビルドした画面とつないでブラウザで確かめる（先に直下で pnpm build）
-node scripts/try-rules.ts               # 3 つの画風の作品を作り、Chromium の検証に通す
+pnpm try:rules                          # 3 つの画風の作品を作り、Chromium の検証に通す
 ```
 
 画面も一緒に動かすときは、リポジトリの直下で `pnpm dev`（[README.md](../README.md)）。

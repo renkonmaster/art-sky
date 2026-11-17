@@ -34,7 +34,7 @@ const record = (title: string, createdAt: string) => ({
   seed: 1,
   aspectRatio: { width: 1, height: 1 },
   title,
-  generator: { id: "artsky-claude", version: "0.1.0" },
+  generator: { id: "artsky-rules", version: "0.2.0" },
   state: {},
   createdAt,
 });
@@ -92,7 +92,7 @@ const call = (path: string, init: RequestInit = {}, as: string | null = cookie) 
 const post = (path: string, body?: unknown, as: string | null = cookie) =>
   call(path, { method: "POST", ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }, as);
 
-const CONSENT = { consent: { externalAi: true } };
+const CONSENT = { consent: { publish: true } };
 
 async function expectError(res: Response, status: number, code: string) {
   expect(res.status).toBe(status);
@@ -155,7 +155,7 @@ describe("内部 API", () => {
 
   it("同意なしでは登録できない。登録すると genesis ジョブができ、投稿の監視に加わる", async () => {
     await expectError(await post("/api/register", {}), 400, "InvalidRequest");
-    await expectError(await post("/api/register", { consent: { externalAi: false } }), 400, "InvalidRequest");
+    await expectError(await post("/api/register", { consent: { publish: false } }), 400, "InvalidRequest");
 
     const res = await post("/api/register", CONSENT);
     expect(res.status).toBe(routes.register.status);

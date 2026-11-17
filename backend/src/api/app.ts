@@ -200,7 +200,7 @@ export function createApp(deps: AppDeps) {
 
   api.post("/register", async (c) => {
     const user = c.get("user");
-    // 投稿を外部 AI に送ることと、推定結果が公開されることへの同意が必須。
+    // 推定結果が作品と一緒に公開されることへの同意が必須。
     parse(RegisterRequest, await readJson(c));
     if (user.consentedAt !== null) throw new ApiError("AlreadyRegistered", "初回登録は済んでいます");
     const registered = deps.users.consent(user.did);

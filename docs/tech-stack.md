@@ -1,9 +1,9 @@
 # 技術選定
 
-> **2026-11-17 更新**：作品の生成は Claude をやめ、AI を使わない推定（`packages/art` の estimate.js）と共通の描画モジュール（draw.js）に切り替えた。
-> 作品は PDS にも 1 人 1 件（レコードキー `self`）だけ保存する。以下の Claude に関する記述は、ハッカソン時点の設計として残している。
+2026-11-14 時点（生成方式は 2026-11-17 に更新）。バージョンは npm の最新版を確認したもの。
 
-2026-11-14 時点。バージョンは npm の最新版を確認したもの。
+作品の生成に AI は使わない。投稿から規則で状態を推定し（`packages/art` の estimate.js）、
+全員共通の描画モジュール（draw.js）と組にして作品にする。作品は PDS に 1 人 1 件（レコードキー `self`）だけ保存する。
 
 ## 全体構成
 
@@ -11,7 +11,7 @@
 
 ```
             ┌──────────── generator ────────────┐
-Bluesky の投稿 ─Jetstream→ │ ジョブ → Claude → 検証(Chromium) │ → putRecord → 本人の PDS
+Bluesky の投稿 ─Jetstream→ │ ジョブ → 推定 → 検証(Chromium)   │ → putRecord → 本人の PDS
             └───────────────────────────────────┘                     │
                                                                   Jetstream
             ┌──────────── appview ──────────────┐                     │
@@ -28,6 +28,7 @@ lexicons/              Lexicon JSON（正本）
 packages/
   api/                 API と作品レコードのスキーマ（Zod）。フロントエンドとバックエンドで共有する
   renderer/            描画環境 canvas2d v1（作品を動かす iframe 用の HTML を作る）
+  art/                 投稿からの推定（estimate.js）と共通の描画モジュール（draw.js）
 backend/               ログイン、作品の生成、ギャラリーの索引と API（1 つのサーバーの中でモジュールを分ける。roles.md）
 frontend/              画面。開発時はモックでバックエンドなしでも動く
 ```
@@ -47,7 +48,7 @@ frontend/              画面。開発時はモックでバックエンドなし
 |---|---|---|
 | `fetchPosts.js` | `backend/src/bluesky/posts.ts` | 300 件 → 100 件。返信・引用・リポストを除く（Plan.md 10 節） |
 | `stats.js` | `backend/src/features/stats.ts` | PDS に保存できるよう、値をすべて整数にした |
-| `analyze.js` | `backend/src/generation/`（Claude の出力の `analysis`） | 描画関数の生成と同じ 1 回の呼び出しで推定する。キーワード辞書による簡易判定はやめた |
+| `analyze.js` | `packages/art/src/estimate.js` | キーワード辞書による判定を作り直した（日本語・英語、否定、強調、絵文字、顔文字） |
 | `oauth.js` | `backend/src/auth/oauth.ts` | スコープを `transition:generic` から必要な操作だけに絞った |
 
 ## 共通
@@ -70,7 +71,7 @@ frontend/              画面。開発時はモックでバックエンドなし
 | Bluesky API | `@atproto/api` | 投稿とプロフィールの取得、レコード書き込み |
 | DB | SQLite（Node.js 標準の `node:sqlite`） | 初期版は 1 台で足りる。ネイティブモジュールのビルドが要らない。表が少ないので ORM は使わず SQL を直接書く |
 | ジョブ | SQLite のジョブテーブルをワーカーが取得 | Redis などを増やさずに済む |
-| 描画関数の生成 | Claude API（`@anthropic-ai/sdk`、`claude-opus-5-5`） | コード生成の品質が高い |
+| 作品の生成 | 規則による推定（`@art-sky/art`） | 外部 API に投稿を送らず、費用もかからない。同じ入力からは同じ作品になる |
 | 生成結果の検証 | Playwright + ヘッドレス Chromium | ギャラリーと同じブラウザ・同じ renderer で実行できる |
 
 ### ログインの権限
@@ -93,15 +94,13 @@ OAuth のスコープは必要な操作だけに絞る。
 
 - ジョブテーブルは元投稿の URI に一意制約をかける。同じ投稿のジョブは 1 つしか作られない。
 - 状態は `queued` → `generating` → `validating` → `saving` → `done`、失敗したら `failed`。
-- 再試行は `failed` のジョブを `queued` に戻すだけにする。作品のレコードキーは元投稿と同じなので、保存が二重に走っても重複しない。
+- 再試行は `failed` のジョブを `queued` に戻すだけにする。作品は `self` を上書きし、前作品の元投稿が同じならジョブを飛ばすので、保存が二重に走っても重複しない。
 
-### Claude API の使い方
+### 生成のしかた
 
-- モデルは `claude-opus-5-5`、思考は adaptive、effort は `high` から始めて調整する。
-- 構造化出力（`output_config.format`）で `code`、`params`、`title`、`state` を JSON で受け取る。
-- 出力が長くなりうるのでストリーミングで受け取る。
-- 安全分類器による拒否に備えて、サーバー側フォールバック（`fallbacks: "default"`）を有効にする。
-- 投稿履歴を外部 AI に送るため、利用開始時に送信内容と送信先を説明する（Plan.md 10 節）。
+- genesis：直近の投稿から感情の割合、投稿の多さ、時間帯、「!」や絵文字の割合を推定する。画風（`lines` `poly` `orbit`）もここで決め、以後は変えない。
+- evolution：前作品の `params` を、新しい投稿 1 件の分だけ少し動かす。
+- 乱数のシードは DID から作るので、同じ人の作品は同じ骨格を保ったまま変化する。
 
 ### 検証の内容
 
@@ -112,7 +111,7 @@ OAuth のスコープは必要な操作だけに絞る。
 3. 何かが描かれている（キャンバスが空ではない）。
 4. 同じ `seed` で 2 回描くと、同じ画像になる。
 
-失敗したときは、エラー内容を添えて Claude に作り直させる（回数に上限を設ける）。
+失敗したときはジョブを `failed` にする（描画モジュールは共通なので、ふつうは失敗しない）。
 
 ## appview（ギャラリー側）
 

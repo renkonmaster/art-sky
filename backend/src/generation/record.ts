@@ -60,7 +60,7 @@ function postRange(posts: SourcePost[]): { oldestPostAt?: string; newestPostAt?:
 }
 
 /**
- * 次の作品に引き継ぐ state。Claude が返した自由な部分に、生成側が管理する 2 つを足す。
+ * 次の作品に引き継ぐ state。生成方式ごとの自由な部分に、生成側が管理する 2 つを足す。
  * - analysis：今回の感情と個性の推定
  * - features：genesis で計算した投稿の特徴。evolution では前作品のものをそのまま引き継ぐ
  */

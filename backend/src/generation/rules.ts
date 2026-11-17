@@ -2,7 +2,7 @@
  * AI を使わない生成。投稿から作品の状態を推定し（@art-sky/art の estimate.js）、
  * 共通の描画モジュール（@art-sky/art/draw.js）と組にして作品にする。
  *
- * レコードの形式は Claude で生成していたときと同じ。
+ * レコードの形式：
  *   - code   ：描画モジュールのソースそのもの（全員共通）
  *   - params ：推定した状態＋seed（DID から作る）＋style（最初の作品で決めた画風）
  * 状態は前の作品の params から引き継ぐので、投稿のたびに少しずつ変化する。
@@ -25,7 +25,7 @@ export function seedFromDid(did: string): number {
   return h >>> 0;
 }
 
-/** 前の作品の params が、この方式で作った状態かどうか（Claude で作った古い作品は違う）。 */
+/** 前の作品の params が、この方式で作った状態かどうか（以前の方式で作った古い作品は違う）。 */
 function isArtState(value: unknown): value is ArtState & { seed?: number } {
   const v = value as Partial<ArtState> | null;
   return typeof v === "object" && v !== null && v.v === 1 && typeof v.mix === "object" && typeof v.style === "string" && typeof v.base === "object";
@@ -68,7 +68,7 @@ export function generateWithoutAi(input: GenerationInput): GenerationResult {
       state = evolveState(prevState, input.post, { timeZone });
       seed = typeof prevSeed === "number" ? prevSeed : undefined;
     } else {
-      // Claude で作った古い作品の続き：新しい投稿だけから状態を作り直す
+      // 以前の方式で作った古い作品の続き：新しい投稿だけから状態を作り直す
       state = estimateGenesis([input.post], { timeZone }).state;
     }
   }

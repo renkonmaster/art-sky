@@ -47,12 +47,12 @@ export const JobStatus = z.enum(["queued", "generating", "validating", "saving",
 export type JobStatus = z.infer<typeof JobStatus>;
 
 export const JobErrorCode = z.enum([
-  "refusal", // Claude が生成を拒否した
-  "invalid_output", // Claude の出力が形式に合わない
+  "refusal", // 生成を拒否した（以前の記録との互換のために残す）
+  "invalid_output", // 生成した出力が形式に合わない
   "validation_failed", // 生成したコードが検証に通らない
   "pds_write_failed", // PDS への保存に失敗した
   "auth_expired", // ログインの期限切れ。再ログインが必要
-  "upstream_error", // Claude API や Bluesky が一時的に使えない
+  "upstream_error", // Bluesky や PDS が一時的に使えない
   "internal", // その他
 ]);
 export type JobErrorCode = z.infer<typeof JobErrorCode>;
@@ -87,11 +87,11 @@ export const FINISHED_JOB_STATUSES: readonly JobStatus[] = ["done", "failed"];
 
 /**
  * POST /api/register。
- * 投稿履歴を Claude（外部 AI）に送ることと、推定結果（感情や性格の傾向）が作品と一緒に公開されることへの同意が必須。
+ * 投稿から推定した結果（感情の傾向や投稿の特徴）が、作品と一緒に公開されることへの同意が必須。
  */
 export const RegisterRequest = z.object({
   consent: z.object({
-    externalAi: z.literal(true),
+    publish: z.literal(true),
   }),
 });
 export type RegisterRequest = z.infer<typeof RegisterRequest>;
