@@ -7,6 +7,9 @@
  *   3. ログイン時に、その人の PDS から作品の一覧を読み直したとき（索引の作り直し）
  *
  * 入れる前に必ず ArtworkRecord で検証する。PDS には誰でも任意のレコードを書けるため。
+ *
+ * 1 人につき最新の作品 1 件だけを持つ。過去の作品は本人の PDS に残るが、サービス側では保持しない。
+ * 次の作品の生成は PDS の作品から前作品を探すので（jobs/runner.ts）、ここに過去の作品がなくても困らない。
  */
 import { ArtworkRecord, type ArtworkView, type AuthorView } from "@art-sky/api";
 import { nowIso, type Database } from "../db/database.ts";
@@ -64,7 +67,9 @@ export function createGalleryIndex(db: Database) {
      ON CONFLICT (uri) DO UPDATE SET cid = excluded.cid, record = excluded.record, created_at = excluded.created_at`,
   );
   const remove = db.prepare("DELETE FROM artworks WHERE uri = ?");
-  const removeMissing = db.prepare("DELETE FROM artworks WHERE did = ? AND rkey NOT IN (SELECT value FROM json_each(?))");
+  const removeOthers = db.prepare("DELETE FROM artworks WHERE did = ? AND rkey <> ?");
+  const removeAllOf = db.prepare("DELETE FROM artworks WHERE did = ?");
+  const newestRkey = db.prepare("SELECT MAX(rkey) AS rkey FROM artworks WHERE did = ?");
   const byUri = db.prepare("SELECT * FROM artworks WHERE uri = ?");
   // レコードキー（TID）は時刻順に並ぶので、作品の新旧はレコードキーで決める。
   const byDid = db.prepare("SELECT * FROM artworks WHERE did = ? ORDER BY rkey DESC LIMIT ? OFFSET ?");
@@ -81,10 +86,13 @@ export function createGalleryIndex(db: Database) {
   return {
     /**
      * 作品を索引に入れる。レコードの形式が正しくなければ入れずに false を返す。
+     * すでにもっと新しい作品があれば入れない。入れたら、その人の古い作品は索引から消す。
      */
     upsert(input: { did: string; rkey: string; cid: string; record: unknown }): boolean {
       const parsed = ArtworkRecord.safeParse(input.record);
       if (!parsed.success) return false;
+      const newest = (newestRkey.get(input.did) as { rkey: string | null } | undefined)?.rkey;
+      if (newest && newest > input.rkey) return true;
       upsert.run(
         artworkUri(input.did, input.rkey),
         input.did,
@@ -94,23 +102,18 @@ export function createGalleryIndex(db: Database) {
         parsed.data.createdAt,
         nowIso(),
       );
+      removeOthers.run(input.did, input.rkey);
       return true;
     },
     remove(did: string, rkey: string): void {
       remove.run(artworkUri(did, rkey));
     },
-    /** その人の索引を、PDS から読んだ一覧と同じ内容にする（足りないものを入れ、消えたものを消す）。 */
+    /** その人の索引を、PDS から読んだ一覧のうち最新の作品 1 件だけにする。入れた件数（0 か 1）を返す。 */
     replaceAll(did: string, records: ReadonlyArray<{ rkey: string; cid: string; record: unknown }>): number {
-      let count = 0;
-      const kept: string[] = [];
-      for (const r of records) {
-        if (this.upsert({ did, ...r })) {
-          count++;
-          kept.push(r.rkey);
-        }
-      }
-      removeMissing.run(did, JSON.stringify(kept));
-      return count;
+      const valid = records.filter((r) => ArtworkRecord.safeParse(r.record).success);
+      const newest = valid.reduce<(typeof valid)[number] | undefined>((a, r) => (!a || r.rkey > a.rkey ? r : a), undefined);
+      removeAllOf.run(did);
+      return newest && this.upsert({ did, ...newest }) ? 1 : 0;
     },
     get(uri: string): IndexedArtwork | undefined {
       const row = byUri.get(uri) as ArtworkRow | undefined;

@@ -490,7 +490,7 @@ a {
   min-height: 44px;
 }
 
-.feed-title {
+.feed-date {
   display: flex;
   flex-direction: column;
   min-width: 0;

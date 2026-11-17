@@ -11,11 +11,11 @@ export function tileRatio(view: ArtworkView): number {
   return parsed.success ? parsed.data.aspectRatio.height / parsed.data.aspectRatio.width : 1;
 }
 
-function recordInfo(view: ArtworkView): { title: string; createdAt: string; kind: string } {
+function recordInfo(view: ArtworkView): { createdAt: string; kind: string } {
   const parsed = ArtworkRecord.safeParse(view.record);
   return parsed.success
-    ? { title: parsed.data.title ?? "無題", createdAt: parsed.data.createdAt, kind: parsed.data.kind }
-    : { title: "無題", createdAt: view.indexedAt, kind: "" };
+    ? { createdAt: parsed.data.createdAt, kind: parsed.data.kind }
+    : { createdAt: view.indexedAt, kind: "" };
 }
 
 interface Props {
@@ -25,12 +25,12 @@ interface Props {
 }
 
 export function ArtworkTile({ view, variant }: Props) {
-  const { title, createdAt, kind } = recordInfo(view);
+  const { createdAt, kind } = recordInfo(view);
   const name = view.author.displayName ?? view.author.handle;
   return (
     <article className="tile">
-      <Link className="tile-art" to={artworkPath(view.uri)} aria-label={`${name}の作品「${title}」を開く`}>
-        <ArtworkFrame uri={view.uri} record={view.record} label={`${name}の作品「${title}」`} />
+      <Link className="tile-art" to={artworkPath(view.uri)} aria-label={`${name}の作品を開く`}>
+        <ArtworkFrame uri={view.uri} record={view.record} label={`${name}の作品`} />
       </Link>
       {variant === "author" ? (
         <div className="tile-caption">
@@ -48,7 +48,6 @@ export function ArtworkTile({ view, variant }: Props) {
       ) : (
         <div className="tile-caption">
           <span className="tile-author-text">
-            <span className="tile-name">{title}</span>
             <span className="tile-handle">{kind === "genesis" ? "最初の作品" : formatDateTime(createdAt)}</span>
           </span>
           <time className="tile-time" dateTime={createdAt} title={formatDateTime(createdAt)}>

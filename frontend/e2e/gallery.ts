@@ -121,8 +121,13 @@ try {
   await page.locator(".tile-art").first().click();
   await page.waitForSelector(".detail");
   await waitForArtworks(page, 1);
+  assert((await page.locator(".detail h1").count()) === 0, "作品名の見出しが残っている");
+  const previousPath = await page.getByRole("link", { name: "← 前の作品" }).getAttribute("href");
+  assert(previousPath, "前の作品へのリンクがない");
   await page.getByRole("link", { name: "← 前の作品" }).click();
-  await page.waitForFunction(() => document.querySelector(".detail h1")?.textContent === "眠れない夜のプレイリスト");
+  await page.waitForURL(`${base}${previousPath}`);
+  await waitForArtworks(page, 1);
+  assert(!(await page.locator(".detail").innerText()).includes("眠れない夜のプレイリスト"), "既存作品の名前が表示されている");
   await page.goto(`${base}/u/yui.example.com`);
   await page.waitForSelector(".tile");
   assert((await page.locator(".tile").count()) === 5, "結さんの作品が 5 件ではない");

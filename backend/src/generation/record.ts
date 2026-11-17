@@ -2,8 +2,13 @@ import { randomInt } from "node:crypto";
 import type { GenerationInput, GenerationResult, SourcePost } from "./types.ts";
 
 export const ARTWORK_COLLECTION = "com.example.artsky.artwork";
-export const GENERATOR_ID = "artsky-claude";
-export const GENERATOR_VERSION = "0.1.0";
+/**
+ * 作品レコードのキー。1 人につき作品は 1 件だけで、生成のたびに同じキーへ上書きする。
+ * 過去の作品は PDS にも残さない。
+ */
+export const ARTWORK_RKEY = "self";
+export const GENERATOR_ID = "artsky-rules";
+export const GENERATOR_VERSION = "0.2.0";
 export const RENDERER = { runtime: "canvas2d", version: "1" } as const;
 
 /** com.atproto.repo.strongRef */
@@ -89,7 +94,6 @@ export function buildArtworkRecord(
     params: artwork.params,
     seed: options.seed ?? randomSeed(),
     aspectRatio: artwork.aspectRatio,
-    ...(artwork.title ? { title: artwork.title } : {}),
     generator: { id: GENERATOR_ID, version: GENERATOR_VERSION, model: result.model },
     inputs: {
       postsSampled: posts.length,

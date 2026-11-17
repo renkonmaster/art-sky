@@ -6,7 +6,7 @@
     "main": {
       "type": "record",
       "description": "1 件の作品。初回登録時の genesis と、投稿ごとの evolution がある。evolution のレコードキーは元投稿 (app.bsky.feed.post) のレコードキーと同じ TID を使い、同じ投稿から作品が重複して作られないようにする。",
-      "key": "tid",
+      "key": "literal:self",
       "record": {
         "type": "object",
         "required": ["kind", "renderer", "code", "seed", "aspectRatio", "generator", "createdAt"],

@@ -112,7 +112,7 @@ describe("作品レコードの索引", () => {
     expect(gallery.listByDid(ALICE, 10, 0)).toHaveLength(0);
   });
 
-  it("PDS から読み直すと、索引が PDS と同じ内容になる", async () => {
+  it("PDS から読み直すと、索引は PDS の最新の作品 1 件だけになる", async () => {
     gallery.upsert({ did: ALICE, rkey: "3gone", cid: CID, record: artwork() }); // PDS では消された作品
     const pages = [
       { records: [{ uri: `at://${ALICE}/com.example.artsky.artwork/3art2`, cid: CID, value: artwork() }], cursor: "c1" },
@@ -122,8 +122,16 @@ describe("作品レコードの索引", () => {
     let call = 0;
     const agent = { com: { atproto: { repo: { listRecords: async () => ({ data: pages[call++] }) } } } };
     const count = await syncArtworksFromPds(agent as never, ALICE, gallery);
-    expect(count).toBe(2);
-    expect(gallery.listByDid(ALICE, 10, 0).map((a) => a.rkey)).toEqual(["3art2", "3art1"]);
+    expect(count).toBe(1);
+    expect(gallery.listByDid(ALICE, 10, 0).map((a) => a.rkey)).toEqual(["3art2"]);
+  });
+
+  it("新しい作品が入ると古い作品は索引から消え、古い作品を後から受け取っても新しい作品は残る", () => {
+    gallery.upsert({ did: ALICE, rkey: "3art1", cid: CID, record: artwork() });
+    gallery.upsert({ did: ALICE, rkey: "3art2", cid: CID, record: artwork() });
+    expect(gallery.listByDid(ALICE, 10, 0).map((a) => a.rkey)).toEqual(["3art2"]);
+    gallery.upsert({ did: ALICE, rkey: "3art1", cid: CID, record: artwork() });
+    expect(gallery.listByDid(ALICE, 10, 0).map((a) => a.rkey)).toEqual(["3art2"]);
   });
 });
 

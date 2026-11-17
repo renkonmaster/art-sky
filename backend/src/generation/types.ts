@@ -28,6 +28,8 @@ export interface Analysis {
 export interface SourcePost {
   text: string;
   createdAt: string;
+  /** 投稿レコードの langs（例：["ja"]）。読み取りに使う辞書の判定に使う。 */
+  langs?: string[];
 }
 
 /** app.bsky.actor.getProfile から取る、生成時点のアカウント統計。 */
@@ -56,6 +58,10 @@ export interface AspectRatio {
 /** 初回登録時：直近の投稿（最大 100 件）と統計から最初の作品を作る。 */
 export interface GenesisInput {
   kind: "genesis";
+  /** 作者の DID。描画の乱数のシードに使う。 */
+  did?: string;
+  /** 投稿時刻の解釈に使うタイムゾーン。省略時は Asia/Tokyo。 */
+  timeZone?: string;
   posts: SourcePost[];
   profile: ProfileStats;
   /** posts から computeFeatures() で計算した特徴。state.features として以後の作品に引き継ぐ。 */
@@ -65,6 +71,10 @@ export interface GenesisInput {
 /** 投稿時：今回の投稿と前作品から次の作品を作る。 */
 export interface EvolutionInput {
   kind: "evolution";
+  /** 作者の DID。描画の乱数のシードに使う。 */
+  did?: string;
+  /** 投稿時刻の解釈に使うタイムゾーン。省略時は Asia/Tokyo。 */
+  timeZone?: string;
   post: SourcePost;
   previous: PreviousArtwork;
   profile: ProfileStats;
@@ -74,7 +84,6 @@ export type GenerationInput = GenesisInput | EvolutionInput;
 
 /** Claude が生成した作品。レコードにするにはシードや参照を足す（record.ts）。 */
 export interface GeneratedArtwork {
-  title: string;
   /** 今回の時点での感情と個性の推定。evolution では前作品の state.analysis を更新したもの。 */
   analysis: Analysis;
   code: string;

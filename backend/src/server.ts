@@ -13,11 +13,10 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./api/app.ts";
 import { createOAuthClient } from "./auth/oauth.ts";
-import { loadClaudeConfig } from "./config.ts";
 import { openDatabase } from "./db/database.ts";
 import { createGalleryIndex } from "./gallery/index.ts";
 import { syncArtworksFromPds } from "./gallery/sync.ts";
-import { generateArtwork } from "./generation/claude.ts";
+import { generateWithoutAi } from "./generation/rules.ts";
 import { startConsumer } from "./jetstream/consumer.ts";
 import { createJobRepository } from "./jobs/repository.ts";
 import { SessionExpiredError, startWorker } from "./jobs/worker.ts";
@@ -132,8 +131,8 @@ const worker = startWorker({
   jobs,
   publicAgent,
   getUserAgent,
-  // API キーがなくてもサーバーは起動できるよう、生成のたびに読む
-  generate: (input) => generateArtwork(input, loadClaudeConfig()),
+  // AI を使わず、投稿から推定したパラメーターと共通の描画モジュールで作品を作る
+  generate: async (input) => generateWithoutAi(input),
   validate: async (record) => {
     await validator?.validate(record);
   },
@@ -146,7 +145,6 @@ const server = serve({ fetch: app.fetch, port: PORT, hostname: PUBLIC_URL ? "0.0
   console.log(serveFrontend ? `画面: ${FRONTEND_URL}（${FRONTEND_DIST} を配信）` : `画面: ${FRONTEND_URL}（frontend の開発サーバー）`);
   if (env.NODE_ENV === "production" && !serveFrontend) console.log("（frontend/dist がありません。pnpm build を実行してください）");
   if (!PUBLIC_URL) console.log("（開発モード：localhost ではなく 127.0.0.1 で開いてください）");
-  if (!env.ANTHROPIC_API_KEY) console.log("（ANTHROPIC_API_KEY が未設定です。生成ジョブは失敗します）");
   if (!VALIDATE) console.log("（VALIDATE=off：生成したコードを確かめずに保存します）");
 });
 

@@ -59,7 +59,6 @@ function CardEditor({ view }: { view: ArtworkView }) {
   const [error, setError] = useState<string | null>(null);
 
   const name = view.author.displayName ?? view.author.handle;
-  const title = record?.title ?? "無題";
   const image = state.status === "ready" ? state.image : null;
 
   // 何作目かは、その人の作品の一覧から数える。取れなくても名刺は作れる（番号を省く）。
@@ -103,7 +102,6 @@ function CardEditor({ view }: { view: ArtworkView }) {
         avatar,
         name,
         handle: view.author.handle,
-        title,
         createdAt: record.createdAt,
         serial: view.uri.split("/").at(-1) ?? "",
         number: position?.number,
@@ -115,7 +113,7 @@ function CardEditor({ view }: { view: ArtworkView }) {
       { orientation, theme },
     );
     setDrawn(true);
-  }, [image, avatar, position, record, name, title, view.author.handle, view.uri, orientation, theme]);
+  }, [image, avatar, position, record, name, view.author.handle, view.uri, orientation, theme]);
 
   const download = async () => {
     const canvas = canvasRef.current;
@@ -156,7 +154,7 @@ function CardEditor({ view }: { view: ArtworkView }) {
           width={size.width}
           height={size.height}
           role="img"
-          aria-label={`${name}の名刺。背景は作品「${title}」の絵で、Bluesky のプロフィールへの QR コードが入っています`}
+          aria-label={`${name}の名刺。背景は作品の絵で、Bluesky のプロフィールへの QR コードが入っています`}
         />
         {state.status === "drawing" ? <p className="card-note">作品を描いています…</p> : null}
         {state.status === "error" || !record ? (

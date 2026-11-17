@@ -1,0 +1,12 @@
+{
+  "name": "@art-sky/art",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./src/estimate.d.ts", "default": "./src/estimate.js" },
+    "./draw.js": "./src/draw.js"
+  },
+  "scripts": {
+    "test": "node --test src/"
+  }
+}

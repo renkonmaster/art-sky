@@ -20,7 +20,6 @@ export interface CardContent {
   avatar: ImageBitmap | null;
   name: string;
   handle: string;
-  title: string;
   /** ISO 8601 の生成日時。 */
   createdAt: string;
   /** 右上に出す通し番号（作品のレコードキー）。 */
@@ -280,11 +279,6 @@ export function drawCard(canvas: HTMLCanvasElement, content: CardContent, option
   const big = content.number !== undefined ? `No.${content.number}` : "No.—";
   ctx.font = sans(700)(92);
   ctx.fillText(big, inner, box.y + 160);
-  const bigWidth = ctx.measureText(big).width;
-  const title = fitText(ctx, `「${content.title}」`, box.x + box.w - 48 - (inner + bigWidth + 28), sans(500), 40, 24);
-  ctx.fillStyle = palette.muted;
-  ctx.font = sans(500)(title.size);
-  ctx.fillText(title.text, inner + bigWidth + 28, box.y + 156);
   const stats = [
     content.works !== undefined ? `WORKS ${content.works}` : null,
     content.postsCount !== undefined ? `POSTS ${content.postsCount.toLocaleString("en-US")}` : null,

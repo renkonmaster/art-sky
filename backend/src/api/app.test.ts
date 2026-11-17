@@ -248,27 +248,28 @@ describe("ギャラリー API", () => {
     expect(second.cursor).toBeUndefined();
   });
 
-  it("listByActor は DID でもハンドル名でも引ける", async () => {
+  it("listByActor は DID でもハンドル名でも引け、最新の作品 1 件だけを返す", async () => {
     for (const actor of [ALICE, "alice.test", "ALICE.test"]) {
       const out = routes.listByActor.response.parse(
         await (await call(`${routes.listByActor.path}?actor=${encodeURIComponent(actor)}`, {}, null)).json(),
       );
       expect(out.author.did).toBe(ALICE);
-      expect(out.items.map((i) => ArtworkRecord.parse(i.record).title)).toEqual(["三作目", "二作目", "はじまり"]);
+      expect(out.items.map((i) => ArtworkRecord.parse(i.record).title)).toEqual(["三作目"]);
     }
     await expectError(await call(`${routes.listByActor.path}?actor=nobody.test`, {}, null), 404, "ActorNotFound");
     await expectError(await call(routes.listByActor.path, {}, null), 400, "InvalidRequest");
   });
 
-  it("getArtwork は前後の作品の URI を返す", async () => {
+  it("getArtwork は最新の作品だけを返す（過去の作品は索引に残さない）", async () => {
     const uri = (rkey: string) => `at://${ALICE}/com.example.artsky.artwork/${rkey}`;
     const get = async (rkey: string) =>
       routes.getArtwork.response.parse(
         await (await call(`${routes.getArtwork.path}?uri=${encodeURIComponent(uri(rkey))}`, {}, null)).json(),
       );
-    expect(await get("3aaa2")).toMatchObject({ previous: uri("3aaa1"), next: uri("3aaa3") });
-    expect((await get("3aaa1")).previous).toBeUndefined();
-    expect((await get("3aaa3")).next).toBeUndefined();
+    const latest = await get("3aaa3");
+    expect(latest.previous).toBeUndefined();
+    expect(latest.next).toBeUndefined();
+    await expectError(await call(`${routes.getArtwork.path}?uri=${encodeURIComponent(uri("3aaa2"))}`, {}, null), 404, "NotFound");
     await expectError(await call(`${routes.getArtwork.path}?uri=${encodeURIComponent(uri("3zzz9"))}`, {}, null), 404, "NotFound");
   });
 

@@ -43,7 +43,6 @@ const AnalysisOutput = z.object({
 /** Claude に返させる形。params と state は中身が自由なので JSON 文字列で受け取る。 */
 const ModelOutput = z.object({
   analysis: AnalysisOutput,
-  title: z.string(),
   code: z.string(),
   paramsJson: z.string(),
   stateJson: z.string(),
@@ -141,7 +140,6 @@ export function toGeneratedArtwork(output: ModelOutput): GeneratedArtwork {
   assertNoFloats(state, "state");
   for (const key of RESERVED_STATE_KEYS) delete state[key];
   return {
-    title: output.title.trim(),
     analysis: toAnalysis(output.analysis),
     code: output.code,
     params,

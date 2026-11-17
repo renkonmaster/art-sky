@@ -9,7 +9,7 @@
 ```
 初回登録：直近 100 件の投稿（返信・引用・リポストを除く）とプロフィール統計を取得
         → 投稿の特徴を計算（features/stats.ts）
-        → Claude が感情・個性を推定し、描画関数を生成（generation/claude.ts）
+        → 投稿から描画のパラメーターを推定し、共通の描画モジュールと組にする（generation/rules.ts、AI なし）
         → Chromium で実行して検証（validation/chromium.ts）
         → 本人の PDS に com.example.artsky.artwork を保存（genesis）→ ギャラリーの索引に入れる
 
@@ -53,12 +53,11 @@ PDS のレコードは公開されるので、推定結果も公開される（�
 ```bash
 pnpm install
 pnpm exec playwright install chromium   # 検証用のブラウザ
-cp .env.example .env                    # ANTHROPIC_API_KEY を設定
 pnpm dev                                # http://127.0.0.1:3000 で API、ワーカー、投稿の監視を起動
 pnpm test                               # ネット不要（Chromium の検証テストは、Chromium があれば実行する）
 pnpm typecheck
 pnpm e2e                                # ビルドした画面とつないでブラウザで確かめる（先に直下で pnpm build）
-pnpm try:generate                       # fixtures/ の投稿で作品を 1 つ生成して out/ に書き出す（Claude API の料金がかかる）
+node scripts/try-rules.ts               # 3 つの画風の作品を作り、Chromium の検証に通す
 ```
 
 画面も一緒に動かすときは、リポジトリの直下で `pnpm dev`（[README.md](../README.md)）。

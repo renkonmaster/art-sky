@@ -11,22 +11,21 @@ const AUTOPLAY_MS = 7000;
 
 interface Props {
   items: readonly ArtworkView[];
-  /** author: 作者を主に見せる（全体ギャラリー）。history: 題名と日付を主に見せる（個人ギャラリー）。 */
+  /** author: 作者を主に見せる（全体ギャラリー）。history: 日付を主に見せる（個人ギャラリー）。 */
   variant: "author" | "history";
   /** 終わりが近づいたら呼ぶ。続きの読み込みに使う。 */
   onNearEnd?: (() => void) | undefined;
 }
 
-function info(view: ArtworkView): { title: string; createdAt: string; kind: string; ratio: number } {
+function info(view: ArtworkView): { createdAt: string; kind: string; ratio: number } {
   const parsed = ArtworkRecord.safeParse(view.record);
   return parsed.success
     ? {
-        title: parsed.data.title ?? "無題",
         createdAt: parsed.data.createdAt,
         kind: parsed.data.kind,
         ratio: parsed.data.aspectRatio.width / parsed.data.aspectRatio.height,
       }
-    : { title: "無題", createdAt: view.indexedAt, kind: "", ratio: 1 };
+    : { createdAt: view.indexedAt, kind: "", ratio: 1 };
 }
 
 /**
@@ -102,13 +101,13 @@ export function Feed({ items, variant, onNearEnd }: Props) {
     <div className="feed">
       <div ref={list} className="feed-list">
         {items.map((view, i) => {
-          const { title, createdAt, kind, ratio } = info(view);
+          const { createdAt, kind, ratio } = info(view);
           const name = view.author.displayName ?? view.author.handle;
           return (
-            <article key={view.uri} className="feed-slide" data-index={i} aria-label={`${name}「${title}」`}>
+            <article key={view.uri} className="feed-slide" data-index={i} aria-label={`${name}の作品`}>
               <div className="feed-art" style={{ "--ratio": ratio } as CSSProperties}>
-                <Link to={artworkPath(view.uri)} aria-label={`「${title}」の詳細を開く`}>
-                  <ArtworkFrame uri={view.uri} record={view.record} renderSize={1080} label={`${name}の作品「${title}」`} />
+                <Link to={artworkPath(view.uri)} aria-label={`${name}の作品の詳細を開く`}>
+                  <ArtworkFrame uri={view.uri} record={view.record} renderSize={1080} label={`${name}の作品`} />
                 </Link>
               </div>
               <div className="feed-caption">
@@ -121,8 +120,7 @@ export function Feed({ items, variant, onNearEnd }: Props) {
                     </span>
                   </Link>
                 ) : null}
-                <div className="feed-title">
-                  <span className="tile-name">{title}</span>
+                <div className="feed-date">
                   <time className="tile-handle" dateTime={createdAt} title={formatDateTime(createdAt)}>
                     {variant === "history" && kind === "genesis" ? "最初の作品・" : ""}
                     {formatRelative(createdAt)}

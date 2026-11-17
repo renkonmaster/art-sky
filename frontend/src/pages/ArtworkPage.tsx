@@ -23,17 +23,15 @@ export function ArtworkPage() {
   const parsed = ArtworkRecord.safeParse(artwork.record);
   const record = parsed.success ? parsed.data : null;
   const name = artwork.author.displayName ?? artwork.author.handle;
-  const title = record?.title ?? "無題";
   const postUrl = record?.trigger ? blueskyPostUrl(record.trigger.uri) : null;
   const wide = record ? record.aspectRatio.width > record.aspectRatio.height : false;
 
   return (
     <article className="detail" data-wide={wide}>
       <div className="detail-art">
-        <ArtworkFrame uri={artwork.uri} record={artwork.record} renderSize={1200} label={`${name}の作品「${title}」`} />
+        <ArtworkFrame uri={artwork.uri} record={artwork.record} renderSize={1200} label={`${name}の作品`} />
       </div>
       <div className="detail-side">
-        <h1 className="page-heading">{title}</h1>
         <Link className="tile-author" to={actorPath(artwork.author.handle)}>
           <Avatar author={artwork.author} size={40} />
           <span className="tile-author-text">

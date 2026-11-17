@@ -17,7 +17,6 @@ const generated = toGeneratedArtwork({
     mix: { joy: 0, calm: 0, excitement: 0, nostalgia: 0, sadness: 0, anxiety: 0, anger: 0, neutral: 1000 },
     personality: { openness: 500, conscientiousness: 500, extraversion: 500, agreeableness: 500, neuroticism: 500 },
   },
-  title: "t",
   code: "export default function draw(ctx, env) {}",
   paramsJson: "{}",
   stateJson: '{"pieces":1}',
@@ -29,6 +28,7 @@ const generated = toGeneratedArtwork({
 function fakes() {
   const repo = new Map<string, { uri: string; cid: string; value: unknown }>();
   const puts: { collection: string; rkey: string; record: unknown }[] = [];
+  const deletes: string[] = [];
   const inputs: GenerationInput[] = [];
   const key = (collection: string, rkey: string) => `${collection}/${rkey}`;
 
@@ -41,19 +41,25 @@ function fakes() {
             if (!r) throw new Error("not found");
             return { data: r };
           },
-          async listRecords({ collection, cursor }: { collection: string; cursor?: string }) {
+          async listRecords({ collection, cursor, limit = 50 }: { collection: string; cursor?: string; limit?: number }) {
             const records = [...repo.entries()]
               .filter(([k]) => k.startsWith(`${collection}/`))
               .map(([k, v]) => ({ rkey: k.slice(collection.length + 1), ...v }))
               .filter((r) => cursor === undefined || r.rkey < cursor)
               .sort((a, b) => (a.rkey < b.rkey ? 1 : -1));
-            return { data: { records: records.slice(0, 1) } };
+            return { data: { records: records.slice(0, limit) } };
           },
           async putRecord({ collection, rkey, record }: { collection: string; rkey: string; record: unknown }) {
             puts.push({ collection, rkey, record });
             const uri = `at://${DID}/${collection}/${rkey}`;
-            repo.set(key(collection, rkey), { uri, cid: `cid-${rkey}`, value: record });
-            return { data: { uri, cid: `cid-${rkey}` } };
+            const cid = `cid-${rkey}-${puts.length}`;
+            repo.set(key(collection, rkey), { uri, cid, value: record });
+            return { data: { uri, cid } };
+          },
+          async deleteRecord({ collection, rkey }: { collection: string; rkey: string }) {
+            deletes.push(rkey);
+            repo.delete(key(collection, rkey));
+            return { data: {} };
           },
         },
       },
@@ -77,7 +83,7 @@ function fakes() {
     },
   };
 
-  return { repo, puts, inputs, userAgent, publicAgent };
+  return { repo, puts, deletes, inputs, userAgent, publicAgent };
 }
 
 let jobs: JobRepository;
@@ -103,40 +109,68 @@ beforeEach(() => {
 });
 
 describe("runJob", () => {
-  it("genesis：返信を除いた投稿から作り、決めたレコードキーで保存する", async () => {
+  const SELF = `at://${DID}/com.example.artsky.artwork/self`;
+  const artworkKeys = () => [...f.repo.keys()].filter((k) => k.startsWith("com.example.artsky.artwork/"));
+  const addPost = (rkey: string, text: string) =>
+    f.repo.set(`app.bsky.feed.post/${rkey}`, { uri: `at://${DID}/app.bsky.feed.post/${rkey}`, cid: `post-${rkey}`, value: { text, createdAt: "2026-11-14T00:00:00Z" } });
+
+  it("genesis：返信を除いた投稿から作り、レコードキー self で保存する", async () => {
     const job = jobs.enqueueGenesis(DID, "3genesis");
     await runJob(deps, jobs.claimNext()!);
 
     const input = f.inputs[0]!;
     expect(input.kind).toBe("genesis");
     expect(input.kind === "genesis" && input.posts.map((p) => p.text)).toEqual(["朝の空"]);
-    expect(f.puts[0]).toMatchObject({ collection: "com.example.artsky.artwork", rkey: "3genesis" });
-    expect(jobs.get(job.id)).toMatchObject({ status: "done", artworkUri: `at://${DID}/com.example.artsky.artwork/3genesis` });
+    expect(f.puts[0]).toMatchObject({ collection: "com.example.artsky.artwork", rkey: "self" });
+    expect(jobs.get(job.id)).toMatchObject({ status: "done", artworkUri: SELF });
   });
 
-  it("evolution：元投稿と直前の作品を参照し、元投稿と同じキーで保存する", async () => {
-    const g = jobs.enqueueGenesis(DID, "3a");
+  it("evolution：元投稿と直前の作品を参照し、同じ self を上書きする（PDS に作品は 1 件だけ）", async () => {
+    jobs.enqueueGenesis(DID, "3a");
     await runJob(deps, jobs.claimNext()!);
-    f.repo.set("app.bsky.feed.post/3b", { uri: `at://${DID}/app.bsky.feed.post/3b`, cid: "post-cid", value: { text: "初雪", createdAt: "2026-11-14T00:00:00Z" } });
+    addPost("3b", "初雪");
 
     jobs.enqueueEvolution(DID, `at://${DID}/app.bsky.feed.post/3b`, "3b");
     await runJob(deps, jobs.claimNext()!);
 
     const record = f.puts[1]!.record as ArtworkRecord;
-    expect(f.puts[1]!.rkey).toBe("3b");
+    expect(f.puts[1]!.rkey).toBe("self");
     expect(record.kind).toBe("evolution");
-    expect(record.trigger).toEqual({ uri: `at://${DID}/app.bsky.feed.post/3b`, cid: "post-cid" });
-    expect(record.previous).toEqual({ uri: jobs.get(g.id)!.artworkUri, cid: "cid-3a" });
+    expect(record.trigger).toEqual({ uri: `at://${DID}/app.bsky.feed.post/3b`, cid: "post-3b" });
+    expect(record.previous).toEqual({ uri: SELF, cid: "cid-self-1" });
     // genesis の features を引き継ぐ
     expect(record.state.features).toEqual((f.puts[0]!.record as ArtworkRecord).state.features);
+    expect(artworkKeys()).toEqual(["com.example.artsky.artwork/self"]);
   });
 
-  it("同じジョブを 2 回保存しても同じレコードを上書きするだけ", async () => {
+  it("同じ投稿のジョブを 2 回実行しても、2 回目は作り直さない", async () => {
     jobs.enqueueGenesis(DID, "3a");
-    const job = jobs.claimNext()!;
-    await runJob(deps, job);
-    await runJob(deps, job);
-    expect(new Set(f.puts.map((p) => p.rkey))).toEqual(new Set(["3a"]));
-    expect([...f.repo.keys()].filter((k) => k.startsWith("com.example.artsky.artwork/"))).toHaveLength(1);
+    await runJob(deps, jobs.claimNext()!);
+    addPost("3b", "初雪");
+    const job = jobs.enqueueEvolution(DID, `at://${DID}/app.bsky.feed.post/3b`, "3b");
+    const claimed = jobs.claimNext()!;
+    await runJob(deps, claimed);
+    await runJob(deps, claimed);
+    expect(f.puts).toHaveLength(2);
+    expect(jobs.get(job.id)).toMatchObject({ status: "done", artworkUri: SELF });
+  });
+
+  it("以前の方式で投稿ごとに作った作品を引き継いで、保存後に PDS から消す", async () => {
+    const legacy = (rkey: string) =>
+      f.repo.set(`com.example.artsky.artwork/${rkey}`, { uri: `at://${DID}/com.example.artsky.artwork/${rkey}`, cid: `old-${rkey}`, value: f.puts[0]!.record });
+    jobs.enqueueGenesis(DID, "3a");
+    await runJob(deps, jobs.claimNext()!);
+    f.repo.delete("com.example.artsky.artwork/self");
+    legacy("3old1");
+    legacy("3old2");
+    addPost("3b", "初雪");
+
+    jobs.enqueueEvolution(DID, `at://${DID}/app.bsky.feed.post/3b`, "3b");
+    await runJob(deps, jobs.claimNext()!);
+
+    // 前作品は以前の方式の最新のもの
+    expect((f.puts[1]!.record as ArtworkRecord).previous).toEqual({ uri: `at://${DID}/com.example.artsky.artwork/3old2`, cid: "old-3old2" });
+    expect(new Set(f.deletes)).toEqual(new Set(["3old1", "3old2"]));
+    expect(artworkKeys()).toEqual(["com.example.artsky.artwork/self"]);
   });
 });
