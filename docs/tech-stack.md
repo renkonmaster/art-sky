@@ -67,7 +67,7 @@ frontend/              画面。開発時はモックでバックエンドなし
 | 用途 | 選定 | 理由 |
 |---|---|---|
 | API | Hono 4 + `@hono/node-server` | 軽量で型が強い |
-| ログイン | `@atproto/oauth-client-node` | AT Protocol 公式の OAuth クライアント |
+| ログイン | `@atproto/oauth-client`（＋ `@atproto/jwk-jose`） | AT Protocol 公式の OAuth クライアント。Node.js 専用版（oauth-client-node）は DNS と node:crypto を使うので、Workers でも動くよう汎用版を WebCrypto と XRPC のハンドル解決で使う。トークン更新のロックは DB に置く |
 | Bluesky API | `@atproto/api` | 投稿とプロフィールの取得、レコード書き込み |
 | DB | SQLite（Node.js では `node:sqlite`、Cloudflare Workers では D1） | リポジトリは非同期の `Sql`（get / all / run）だけを使うので、同じ SQL がどちらでも動く（`backend/src/db/`）。表が少ないので ORM は使わず SQL を直接書く。D1 のスキーマは `backend/migrations/` |
 | ジョブ | SQLite のジョブテーブルを定期実行（1 分ごと）で処理 | Redis などを増やさずに済む。Cloudflare Workers の Cron でも同じ形で動く |

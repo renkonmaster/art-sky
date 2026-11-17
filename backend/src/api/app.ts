@@ -22,7 +22,7 @@ import {
   RegisterRequest,
   UpdateSettingsRequest,
 } from "@art-sky/api";
-import type { NodeOAuthClient } from "@atproto/oauth-client-node";
+import type { OAuthClient } from "@atproto/oauth-client";
 import { type Context, Hono } from "hono";
 import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
 import type { z } from "zod";
@@ -38,7 +38,7 @@ export interface AppDeps {
   users: UserRepository;
   jobs: JobRepository;
   gallery: GalleryIndex;
-  oauth: Pick<NodeOAuthClient, "authorize" | "callback" | "revoke" | "clientMetadata" | "jwks">;
+  oauth: Pick<OAuthClient, "authorize" | "callback" | "revoke" | "clientMetadata" | "jwks">;
   /** ログイン直後に、公開プロフィールからハンドル名などを調べる。 */
   resolveProfile(did: string): Promise<ProfileInfo>;
   /** 作品のレコードキーにする TID を発行する。 */
