@@ -60,6 +60,7 @@ interface User {
   did: string;
   handle: string;
   displayName?: string;
+  bio?: string;
   style: StyleName;
   aspectRatio: { width: number; height: number };
   postsCount: number;
@@ -149,6 +150,7 @@ export class MockBackend {
         did: seed.did,
         handle: seed.handle,
         displayName: seed.displayName,
+        ...(seed.bio ? { bio: seed.bio } : {}),
         style: seed.style,
         aspectRatio: seed.aspectRatio,
         postsCount: seed.postsCount,
@@ -411,6 +413,19 @@ export class MockBackend {
         user.registeredAt = this.now();
         const job = this.createJob(user, "genesis", {});
         return ok({ me: this.me(user), job: this.jobView(job) }, 202);
+      }
+
+      // Bluesky の公開 AppView の代わり（名刺で自己紹介を読む）。本物では public.api.bsky.app に問い合わせる。
+      case "GET /xrpc/app.bsky.actor.getProfile": {
+        const actor = query.get("actor") ?? "";
+        const user = this.users.get(actor) ?? [...this.users.values()].find((u) => u.handle === actor);
+        if (!user) return { status: 400, body: { error: "InvalidRequest", message: "Profile not found" } };
+        return ok({
+          did: user.did,
+          handle: user.handle,
+          ...(user.displayName ? { displayName: user.displayName } : {}),
+          description: user.bio ?? "Bluesky で日々のことを書いています。\nこのプロフィールはモックの架空のものです。",
+        });
       }
 
       // モック専用：Bluesky に投稿があったことにする（本物のバックエンドにはない）。

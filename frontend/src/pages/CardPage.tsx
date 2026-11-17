@@ -7,9 +7,9 @@ import { RequireAuth } from "../auth/RequireAuth.tsx";
 import { ErrorNote, Loading } from "../components/States.tsx";
 import { useArtworkSnapshot } from "../components/useArtworkSnapshot.tsx";
 import { artworkPath, artworkUri } from "../lib/atUri.ts";
-import { type CardOrientation, type CardTheme, canvasToPng, cardSize, drawCard, loadAvatar } from "../lib/card.ts";
+import { type BlueskyProfile, type CardOrientation, type CardStyle, type CardTheme, canvasToPng, cardSize, drawCard, fetchBlueskyProfile, loadAvatar } from "../lib/card.ts";
 
-/** 名刺：自分の作品の絵を名刺の形に加工して、画像として書き出す。 */
+/** 名刺：Bluesky のプロフィール（表示名・ハンドル名・自己紹介・ID）に作品の絵を添えて、画像として書き出す。 */
 export function CardPage() {
   const { did = "", rkey = "" } = useParams();
   return <RequireAuth>{(user) => <CardLoader uri={artworkUri(did, rkey)} viewerDid={user.did} />}</RequireAuth>;
@@ -34,16 +34,14 @@ const ORIENTATIONS: ReadonlyArray<{ value: CardOrientation; label: string }> = [
   { value: "landscape", label: "横" },
   { value: "portrait", label: "縦" },
 ];
+const STYLES: ReadonlyArray<{ value: CardStyle; label: string }> = [
+  { value: "full", label: "絵を全面に" },
+  { value: "side", label: "絵を片側に" },
+];
 const THEMES: ReadonlyArray<{ value: CardTheme; label: string }> = [
   { value: "light", label: "白" },
   { value: "dark", label: "黒" },
 ];
-
-/** この作品が何作目か（1 始まり）と、これまでの作品数。 */
-interface Position {
-  number: number;
-  works: number;
-}
 
 function CardEditor({ view }: { view: ArtworkView }) {
   const record = useMemo(() => {
@@ -54,47 +52,41 @@ function CardEditor({ view }: { view: ArtworkView }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [orientation, setOrientation] = useState<CardOrientation>("landscape");
   const [theme, setTheme] = useState<CardTheme>("light");
+  const [style, setStyle] = useState<CardStyle>("full");
   const [drawn, setDrawn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const name = view.author.displayName ?? view.author.handle;
   const image = state.status === "ready" ? state.image : null;
 
-  // 何作目かは、その人の作品の一覧から数える。取れなくても名刺は作れる（番号を省く）。
-  const [position, setPosition] = useState<Position | null>(null);
+  // 最新のプロフィール（自己紹介など）は Bluesky から読む。undefined は読み込み中、null は読めなかった。
+  const [profile, setProfile] = useState<BlueskyProfile | null | undefined>(undefined);
   useEffect(() => {
-    let cancelled = false;
-    callApi("listByActor", { query: { actor: view.author.did, limit: 100 } }).then(
-      (page) => {
-        // 一覧は新しい順。続きがある（100 件を超える）ときは数えきれないので省く。
-        const index = page.items.findIndex((item) => item.uri === view.uri);
-        if (!cancelled && index >= 0 && !page.cursor) {
-          setPosition({ number: page.items.length - index, works: page.items.length });
-        }
-      },
-      () => undefined,
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [view.author.did, view.uri]);
+    const controller = new AbortController();
+    void fetchBlueskyProfile(view.author.did, controller.signal).then((p) => {
+      if (!controller.signal.aborted) setProfile(p);
+    });
+    return () => controller.abort();
+  }, [view.author.did]);
+  const name = profile?.displayName ?? view.author.displayName ?? view.author.handle;
+  const avatarUrl = profile?.avatar ?? view.author.avatar;
 
   // アバターは読み込めたときだけ使う。undefined は読み込み中。
   const [avatar, setAvatar] = useState<ImageBitmap | null | undefined>(undefined);
   useEffect(() => {
+    if (profile === undefined) return;
     let cancelled = false;
-    void loadAvatar(view.author.avatar).then((bitmap) => {
+    void loadAvatar(avatarUrl).then((bitmap) => {
       if (!cancelled) setAvatar(bitmap);
     });
     return () => {
       cancelled = true;
     };
-  }, [view.author.avatar]);
+  }, [avatarUrl, profile]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !image || !record || avatar === undefined) return;
+    if (!canvas || !image || !record || avatar === undefined || profile === undefined) return;
     drawCard(
       canvas,
       {
@@ -102,18 +94,14 @@ function CardEditor({ view }: { view: ArtworkView }) {
         avatar,
         name,
         handle: view.author.handle,
-        createdAt: record.createdAt,
-        serial: view.uri.split("/").at(-1) ?? "",
-        number: position?.number,
-        works: position?.works,
-        postsCount: record.inputs?.profile?.postsCount,
-        animated: record.renderer.animated,
+        bio: profile?.description ?? "",
+        did: view.author.did,
         profileUrl: `https://bsky.app/profile/${view.author.handle}`,
       },
-      { orientation, theme },
+      { orientation, theme, style },
     );
     setDrawn(true);
-  }, [image, avatar, position, record, name, view.author.handle, view.uri, orientation, theme]);
+  }, [image, avatar, profile, record, name, view.author.handle, view.author.did, orientation, theme, style]);
 
   const download = async () => {
     const canvas = canvasRef.current;
@@ -124,7 +112,7 @@ function CardEditor({ view }: { view: ArtworkView }) {
       const url = URL.createObjectURL(await canvasToPng(canvas));
       const link = document.createElement("a");
       link.href = url;
-      link.download = `art-sky-card-${view.author.handle}-${view.uri.split("/").at(-1)}.png`;
+      link.download = `card-${view.author.handle}.png`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch (err) {
@@ -154,7 +142,7 @@ function CardEditor({ view }: { view: ArtworkView }) {
           width={size.width}
           height={size.height}
           role="img"
-          aria-label={`${name}の名刺。背景は作品の絵で、Bluesky のプロフィールへの QR コードが入っています`}
+          aria-label={`${name}の名刺。表示名、ハンドル名、自己紹介、ID と、Bluesky のプロフィールへの QR コードが入っています`}
         />
         {state.status === "drawing" ? <p className="card-note">作品を描いています…</p> : null}
         {state.status === "error" || !record ? (
@@ -168,6 +156,13 @@ function CardEditor({ view }: { view: ArtworkView }) {
         <div className="segmented" role="group" aria-label="向き">
           {ORIENTATIONS.map((option) => (
             <button key={option.value} type="button" aria-pressed={orientation === option.value} onClick={() => setOrientation(option.value)}>
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className="segmented" role="group" aria-label="絵の置き方">
+          {STYLES.map((option) => (
+            <button key={option.value} type="button" aria-pressed={style === option.value} onClick={() => setStyle(option.value)}>
               {option.label}
             </button>
           ))}
@@ -189,8 +184,8 @@ function CardEditor({ view }: { view: ArtworkView }) {
         </p>
       ) : null}
       <p className="muted card-meta">
-        {size.width} × {size.height} 画素（名刺と同じ 91 × 55 mm の比率）。QR コードは Bluesky のプロフィールを開きます。
-        {record?.renderer.animated ? "アニメーション作品は、開始から 1.5 秒の時点の絵を使います。" : ""}
+        {size.width} × {size.height} 画素（名刺と同じ 91 × 55 mm の比率）。表示名・自己紹介・アイコンは Bluesky の今のプロフィールを使います。
+        QR コードは Bluesky のプロフィールを開きます。
       </p>
       {frame}
     </section>

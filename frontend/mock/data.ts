@@ -54,6 +54,8 @@ export interface SeedAuthor {
   aspectRatio: { width: number; height: number };
   postsCount: number;
   /** 古い順。最初が genesis。 */
+  /** Bluesky の自己紹介（名刺に使う）。 */
+  bio?: string;
   pieces: SeedPiece[];
 }
 
@@ -64,6 +66,7 @@ export const SEED_AUTHORS: SeedAuthor[] = [
   {
     did: "did:plc:mock2aqk3mioexample0001a",
     handle: "mio.example.com",
+    bio: "雨の日と古本屋が好き。\n夜はだいたい本を読んでいます。写真もときどき。",
     displayName: "澪",
     style: "rain",
     aspectRatio: { width: 4, height: 5 },
@@ -78,6 +81,7 @@ export const SEED_AUTHORS: SeedAuthor[] = [
   {
     did: "did:plc:mock2aqk3souexample0002b",
     handle: "sou.example.com",
+    bio: "Web エンジニア / TypeScript と自転車。週末は川沿いを走ってます 🚲",
     displayName: "颯",
     style: "flow",
     aspectRatio: { width: 1, height: 1 },
@@ -103,6 +107,7 @@ export const SEED_AUTHORS: SeedAuthor[] = [
   {
     did: "did:plc:mock2aqk3kaiexample0004d",
     handle: "kai.example.com",
+    bio: "Designer & illustrator based in Tokyo. I post sketches, coffee, and the occasional rant about kerning.",
     displayName: "Kai",
     style: "ridges",
     aspectRatio: { width: 16, height: 9 },
@@ -117,6 +122,7 @@ export const SEED_AUTHORS: SeedAuthor[] = [
   {
     did: "did:plc:mock2aqk3rinexample0005e",
     handle: "rin.example.com",
+    bio: "大学院で情報科学を研究中。符号理論とジェネラティブアートが好きです。ブログ更新はゆっくり。",
     displayName: "凛",
     style: "orbits",
     aspectRatio: { width: 1, height: 1 },

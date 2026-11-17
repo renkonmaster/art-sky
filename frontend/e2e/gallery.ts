@@ -200,8 +200,10 @@ try {
   await page.locator(".feed-art a").first().click();
   await page.getByRole("link", { name: "この作品を名刺にする" }).click();
   await page.waitForSelector('.card-canvas[data-ready="true"]', { timeout: 20_000 });
+  // 最初は絵を全面に敷く版。まず片側の版を確かめる。
+  await page.getByRole("button", { name: "絵を片側に", exact: true }).click();
 
-  /** 名刺の大きさと、背景の絵・文字・QR コードが描かれていることを調べる。 */
+  /** 名刺の大きさと、絵の面・紙の面・QR コードが描かれていることを調べる。 */
   const inspect = () =>
     page.evaluate(() => {
       const canvas = document.querySelector<HTMLCanvasElement>(".card-canvas");
@@ -214,9 +216,11 @@ try {
         for (let i = 0; i < data.length; i += 4 * 97) seen.add(((data[i] ?? 0) << 16) | ((data[i + 1] ?? 0) << 8) | (data[i + 2] ?? 0));
         return seen.size;
       };
-      // QR コードの札（位置は src/lib/card.ts の LAYOUTS）。白と黒の両方がたくさんあるはず。
-      const qr = landscape ? { x: 1820 - 96 - 324, y: 664 } : { x: 1100 - 96 - 280, y: 1420 };
-      const data = ctx.getImageData(qr.x, qr.y, 280, 280).data;
+      // 位置は src/lib/card.ts の LAYOUTS。
+      const art = landscape ? { x: 0, y: 0, w: 620, h: 1100 } : { x: 0, y: 0, w: 1100, h: 690 };
+      const qr = landscape ? { x: 1500, y: 780, size: 210 } : { x: 780, y: 1500, size: 210 };
+      // QR コードの札。白と黒の両方がたくさんあるはず。
+      const data = ctx.getImageData(qr.x, qr.y, qr.size, qr.size).data;
       let dark = 0;
       let white = 0;
       for (let i = 0; i < data.length; i += 4) {
@@ -224,26 +228,27 @@ try {
         if (v < 80) dark++;
         else if (v > 740) white++;
       }
+      const area = qr.size * qr.size;
       return {
         width: canvas.width,
         height: canvas.height,
-        // 背景の絵は四隅まで敷かれている（単色ではない）。
-        corners: [
-          colors(0, 0, 300, 200),
-          colors(canvas.width - 300, canvas.height - 200, 300, 200),
-        ],
-        qrDark: dark / (280 * 280),
-        qrWhite: white / (280 * 280),
+        // 絵の面には色がたくさんある（単色ではない）。
+        artColors: colors(art.x, art.y, art.w, art.h),
+        // 文字の面は紙の色。絵が全面に敷かれていない。
+        paperColors: landscape ? colors(canvas.width - 300, 20, 280, 60) : colors(20, canvas.height - 80, 280, 60),
+        qrDark: dark / area,
+        qrWhite: white / area,
       };
     });
   const landscape = await inspect();
   assert(landscape?.width === 1820 && landscape.height === 1100, "横向きの名刺が 1820 × 1100 ではない");
-  assert(landscape.corners.every((n) => n > 20), `背景に絵が敷かれていない（色 ${landscape.corners.join(", ")} 種類）`);
+  assert(landscape.artColors > 20, `絵の面に絵が描かれていない（色 ${landscape.artColors} 種類）`);
+  assert(landscape.paperColors <= 2, `文字の面が紙の色になっていない（色 ${landscape.paperColors} 種類）`);
   assert(landscape.qrDark > 0.2 && landscape.qrWhite > 0.3, `QR コードが描かれていない（黒 ${landscape.qrDark} 白 ${landscape.qrWhite}）`);
   await shot(page, "card");
 
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "PNG で保存" }).click()]);
-  assert(/^art-sky-card-mio\.example\.com-.+\.png$/.test(download.suggestedFilename()), `ファイル名が ${download.suggestedFilename()}`);
+  assert(/^card-mio\.example\.com\.png$/.test(download.suggestedFilename()), `ファイル名が ${download.suggestedFilename()}`);
   const saved = path.join(outDir ?? (await import("node:os")).tmpdir(), "card-landscape.png");
   await download.saveAs(saved);
   const png = (await import("node:fs")).readFileSync(saved);
@@ -254,7 +259,22 @@ try {
   await page.getByRole("button", { name: "黒", exact: true }).click();
   await page.waitForFunction(() => document.querySelector<HTMLCanvasElement>(".card-canvas")?.width === 1100);
   const portrait = await inspect();
-  assert(portrait?.height === 1820 && portrait.qrDark > 0.2 && portrait.qrWhite > 0.3, "縦向きの名刺が正しく描けていない");
+  assert(portrait?.height === 1820 && portrait.artColors > 20 && portrait.qrDark > 0.2 && portrait.qrWhite > 0.3, "縦向きの名刺が正しく描けていない");
+  // 絵を全面に敷く版：縦・黒の左下の隅まで絵があり、QR コードは白黒のまま。
+  await page.getByRole("button", { name: "絵を全面に", exact: true }).click();
+  await page.waitForTimeout(300);
+  const full = await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>(".card-canvas");
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return null;
+    const pixel = (x: number, y: number) => [...ctx.getImageData(x, y, 1, 1).data.slice(0, 3)].join(",");
+    return { corner: pixel(20, canvas.height - 20) };
+  });
+  // 19,20,25 は黒の紙の色（PALETTES.dark.paper）
+  assert(full && full.corner !== "19,20,25", `絵が全面に敷かれていない（左下 ${full?.corner}）`);
+  const fullInspect = await inspect();
+  assert(fullInspect && fullInspect.qrDark > 0.2 && fullInspect.qrWhite > 0.3, "全面版の QR コードが描かれていない");
+  await page.getByRole("button", { name: "絵を片側に", exact: true }).click();
   const [download2] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "PNG で保存" }).click()]);
   await download2.saveAs(path.join(outDir ?? (await import("node:os")).tmpdir(), "card-portrait-dark.png"));
 
