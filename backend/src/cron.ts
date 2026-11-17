@@ -28,7 +28,7 @@ export interface CronResult {
 
 export async function runCron(deps: CronDeps): Promise<CronResult> {
   const log = deps.log ?? ((m: string) => console.log(`[cron] ${m}`));
-  const reset = deps.runner.jobs.resetStale(STALE_JOB_MS);
+  const reset = await deps.runner.jobs.resetStale(STALE_JOB_MS);
   if (reset > 0) log(`止まっていたジョブ ${reset} 件をやり直します`);
   const pull = await pullOnce(deps.consumer, deps.pull);
   const jobs = await runQueuedJobs(deps.runner, deps.jobs);

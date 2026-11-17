@@ -33,19 +33,19 @@ const postEvent = (rkey: string, record: unknown = { text: "初雪", createdAt: 
   commit: { operation: "create", collection: "app.bsky.feed.post", rkey, cid: CID, record },
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   const db = openDatabase(":memory:");
   users = createUserRepository(db);
   jobs = createJobRepository(db);
   gallery = createGalleryIndex(db);
-  users.touch(ALICE, { handle: "alice.test" });
-  users.consent(ALICE);
+  await users.touch(ALICE, { handle: "alice.test" });
+  await users.consent(ALICE);
 });
 
 describe("Bluesky の投稿の監視", () => {
-  it("登録済みの人の投稿から evolution ジョブを作る。レコードキーは投稿と同じ", () => {
-    expect(handleEvent({ users, jobs, gallery }, postEvent("3post1"))).toBe("job");
-    const [job] = jobs.listByDid(ALICE);
+  it("登録済みの人の投稿から evolution ジョブを作る。レコードキーは投稿と同じ", async () => {
+    expect(await handleEvent({ users, jobs, gallery }, postEvent("3post1"))).toBe("job");
+    const [job] = await jobs.listByDid(ALICE);
     expect(job).toMatchObject({
       kind: "evolution",
       rkey: "3post1",
@@ -55,40 +55,40 @@ describe("Bluesky の投稿の監視", () => {
     });
   });
 
-  it("同じ投稿が二度届いても、ジョブは 1 つ", () => {
-    handleEvent({ users, jobs, gallery }, postEvent("3post1"));
-    handleEvent({ users, jobs, gallery }, postEvent("3post1"));
-    expect(jobs.listByDid(ALICE)).toHaveLength(1);
+  it("同じ投稿が二度届いても、ジョブは 1 つ", async () => {
+    await handleEvent({ users, jobs, gallery }, postEvent("3post1"));
+    await handleEvent({ users, jobs, gallery }, postEvent("3post1"));
+    expect(await jobs.listByDid(ALICE)).toHaveLength(1);
   });
 
   it.each([
     ["返信", { text: "a", reply: { parent: {}, root: {} } }],
     ["引用", { text: "a", embed: { $type: "app.bsky.embed.record" } }],
     ["画像つきの引用", { text: "a", embed: { $type: "app.bsky.embed.recordWithMedia" } }],
-  ])("%sは対象外", (_, record) => {
-    expect(handleEvent({ users, jobs, gallery }, postEvent("3post1", record))).toBe("ignored");
-    expect(jobs.listByDid(ALICE)).toHaveLength(0);
+  ])("%sは対象外", async (_, record) => {
+    expect(await handleEvent({ users, jobs, gallery }, postEvent("3post1", record))).toBe("ignored");
+    expect(await jobs.listByDid(ALICE)).toHaveLength(0);
   });
 
-  it("画像つきのふつうの投稿は対象", () => {
+  it("画像つきのふつうの投稿は対象", async () => {
     const record = { text: "写真", embed: { $type: "app.bsky.embed.images" } };
-    expect(handleEvent({ users, jobs, gallery }, postEvent("3post1", record))).toBe("job");
+    expect(await handleEvent({ users, jobs, gallery }, postEvent("3post1", record))).toBe("job");
   });
 
-  it("登録していない人、未同意の人、生成を止めている人の投稿は対象外", () => {
-    expect(handleEvent({ users, jobs, gallery }, postEvent("3p", undefined, "did:plc:stranger"))).toBe("ignored");
-    users.touch("did:plc:bob", { handle: "bob.test" });
-    expect(handleEvent({ users, jobs, gallery }, postEvent("3p", undefined, "did:plc:bob"))).toBe("ignored");
-    users.updateSettings(ALICE, { generationEnabled: false, listed: true });
-    expect(handleEvent({ users, jobs, gallery }, postEvent("3p"))).toBe("ignored");
+  it("登録していない人、未同意の人、生成を止めている人の投稿は対象外", async () => {
+    expect(await handleEvent({ users, jobs, gallery }, postEvent("3p", undefined, "did:plc:stranger"))).toBe("ignored");
+    await users.touch("did:plc:bob", { handle: "bob.test" });
+    expect(await handleEvent({ users, jobs, gallery }, postEvent("3p", undefined, "did:plc:bob"))).toBe("ignored");
+    await users.updateSettings(ALICE, { generationEnabled: false, listed: true });
+    expect(await handleEvent({ users, jobs, gallery }, postEvent("3p"))).toBe("ignored");
   });
 
-  it("登録より前の投稿、削除、更新は対象外", () => {
+  it("登録より前の投稿、削除、更新は対象外", async () => {
     const old = { ...postEvent("3old"), time_us: (Date.now() - 3_600_000) * 1000 };
-    expect(handleEvent({ users, jobs, gallery }, old)).toBe("ignored");
+    expect(await handleEvent({ users, jobs, gallery }, old)).toBe("ignored");
     const deleted: JetstreamEvent = { did: ALICE, time_us: later(), kind: "commit", commit: { operation: "delete", collection: "app.bsky.feed.post", rkey: "3p" } };
-    expect(handleEvent({ users, jobs, gallery }, deleted)).toBe("ignored");
-    expect(handleEvent({ users, jobs, gallery }, { did: ALICE, time_us: later(), kind: "identity" })).toBe("ignored");
+    expect(await handleEvent({ users, jobs, gallery }, deleted)).toBe("ignored");
+    expect(await handleEvent({ users, jobs, gallery }, { did: ALICE, time_us: later(), kind: "identity" })).toBe("ignored");
   });
 });
 
@@ -100,20 +100,20 @@ describe("作品レコードの索引", () => {
     commit: { operation, collection: "com.example.artsky.artwork", rkey, ...(record ? { cid: CID, record } : {}) },
   });
 
-  it("作成されたら索引に入れ、削除されたら消す", () => {
-    expect(handleEvent({ users, jobs, gallery }, artworkEvent("create", "3art1", artwork()))).toBe("indexed");
-    expect(gallery.listByDid(ALICE, 10, 0)).toHaveLength(1);
-    expect(handleEvent({ users, jobs, gallery }, artworkEvent("delete", "3art1"))).toBe("removed");
-    expect(gallery.listByDid(ALICE, 10, 0)).toHaveLength(0);
+  it("作成されたら索引に入れ、削除されたら消す", async () => {
+    expect(await handleEvent({ users, jobs, gallery }, artworkEvent("create", "3art1", artwork()))).toBe("indexed");
+    expect(await gallery.listByDid(ALICE, 10, 0)).toHaveLength(1);
+    expect(await handleEvent({ users, jobs, gallery }, artworkEvent("delete", "3art1"))).toBe("removed");
+    expect(await gallery.listByDid(ALICE, 10, 0)).toHaveLength(0);
   });
 
-  it("形式の正しくないレコードは入れない", () => {
-    expect(handleEvent({ users, jobs, gallery }, artworkEvent("create", "3art1", { code: 1 }))).toBe("ignored");
-    expect(gallery.listByDid(ALICE, 10, 0)).toHaveLength(0);
+  it("形式の正しくないレコードは入れない", async () => {
+    expect(await handleEvent({ users, jobs, gallery }, artworkEvent("create", "3art1", { code: 1 }))).toBe("ignored");
+    expect(await gallery.listByDid(ALICE, 10, 0)).toHaveLength(0);
   });
 
   it("PDS から読み直すと、索引は PDS の最新の作品 1 件だけになる", async () => {
-    gallery.upsert({ did: ALICE, rkey: "3gone", cid: CID, record: artwork() }); // PDS では消された作品
+    (await gallery.upsert({ did: ALICE, rkey: "3gone", cid: CID, record: artwork() })); // PDS では消された作品
     const pages = [
       { records: [{ uri: `at://${ALICE}/com.example.artsky.artwork/3art2`, cid: CID, value: artwork() }], cursor: "c1" },
       { records: [{ uri: `at://${ALICE}/com.example.artsky.artwork/3art1`, cid: CID, value: artwork() }, { uri: `at://${ALICE}/com.example.artsky.artwork/3bad`, cid: CID, value: {} }], cursor: "c2" },
@@ -123,15 +123,15 @@ describe("作品レコードの索引", () => {
     const agent = { com: { atproto: { repo: { listRecords: async () => ({ data: pages[call++] }) } } } };
     const count = await syncArtworksFromPds(agent as never, ALICE, gallery);
     expect(count).toBe(1);
-    expect(gallery.listByDid(ALICE, 10, 0).map((a) => a.rkey)).toEqual(["3art2"]);
+    expect((await gallery.listByDid(ALICE, 10, 0)).map((a) => a.rkey)).toEqual(["3art2"]);
   });
 
-  it("新しい作品が入ると古い作品は索引から消え、古い作品を後から受け取っても新しい作品は残る", () => {
-    gallery.upsert({ did: ALICE, rkey: "3art1", cid: CID, record: artwork() });
-    gallery.upsert({ did: ALICE, rkey: "3art2", cid: CID, record: artwork() });
-    expect(gallery.listByDid(ALICE, 10, 0).map((a) => a.rkey)).toEqual(["3art2"]);
-    gallery.upsert({ did: ALICE, rkey: "3art1", cid: CID, record: artwork() });
-    expect(gallery.listByDid(ALICE, 10, 0).map((a) => a.rkey)).toEqual(["3art2"]);
+  it("新しい作品が入ると古い作品は索引から消え、古い作品を後から受け取っても新しい作品は残る", async () => {
+    await gallery.upsert({ did: ALICE, rkey: "3art1", cid: CID, record: artwork() });
+    await gallery.upsert({ did: ALICE, rkey: "3art2", cid: CID, record: artwork() });
+    expect((await gallery.listByDid(ALICE, 10, 0)).map((a) => a.rkey)).toEqual(["3art2"]);
+    await gallery.upsert({ did: ALICE, rkey: "3art1", cid: CID, record: artwork() });
+    expect((await gallery.listByDid(ALICE, 10, 0)).map((a) => a.rkey)).toEqual(["3art2"]);
   });
 });
 
@@ -182,7 +182,7 @@ describe("Cron ごとの取り込み（pullOnce）", () => {
       socket.addEventListener("open", () => fn(socket));
     }, 0);
 
-  beforeEach(() => {
+  beforeEach(async () => {
     FakeSocket.instances = [];
     saved = undefined;
   });
@@ -205,7 +205,7 @@ describe("Cron ごとの取り込み（pullOnce）", () => {
     });
     const result = await pullOnce({ users, jobs, gallery }, options());
     expect(result).toMatchObject({ outcome: "pulled", events: 2, jobs: 2 });
-    expect(jobs.listByDid(ALICE).map((j) => j.rkey).sort()).toEqual(["3a", "3b"]);
+    expect((await jobs.listByDid(ALICE)).map((j) => j.rkey).sort()).toEqual(["3a", "3b"]);
     expect(FakeSocket.instances[0]!.closed).toBe(true);
     expect(saved).toBe(NOW_US + 1);
   });
@@ -265,7 +265,7 @@ describe("Cron ごとの取り込み（pullOnce）", () => {
     };
     const result = await pullOnce({ users, jobs, gallery }, options({ feedAgent }));
     expect(result).toMatchObject({ backfilled: 1, jobs: 1 });
-    expect(jobs.listByDid(ALICE).map((j) => j.rkey)).toEqual(["3new"]);
+    expect((await jobs.listByDid(ALICE)).map((j) => j.rkey)).toEqual(["3new"]);
     expect(new URL(FakeSocket.instances[0]!.url).searchParams.has("cursor")).toBe(false);
     expect(saved).toBe(NOW_US - 5_000_000);
   });

@@ -27,7 +27,7 @@ const { values } = parseArgs({
 
 const db = openDatabase(values.db!);
 const oauth = createOAuthClient({ db, publicUrl: process.env.PUBLIC_URL, port: Number(values.port) });
-const dids = values.did ? [values.did] : createUserRepository(db).listRegistered().map((u) => u.did);
+const dids = values.did ? [values.did] : (await createUserRepository(db).listRegistered()).map((u) => u.did);
 const rkeyOf = (uri: string) => uri.slice(uri.lastIndexOf("/") + 1);
 
 for (const did of dids) {

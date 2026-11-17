@@ -13,7 +13,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./api/app.ts";
 import { createOAuthClient } from "./auth/oauth.ts";
-import { openDatabase } from "./db/database.ts";
+import { cursorStore, openDatabase } from "./db/database.ts";
 import { createGalleryIndex } from "./gallery/index.ts";
 import { syncArtworksFromPds } from "./gallery/sync.ts";
 import { generateWithoutAi } from "./generation/rules.ts";
@@ -84,8 +84,6 @@ async function getUserAgent(did: string): Promise<Agent> {
   }
 }
 
-const kvGet = db.prepare("SELECT value FROM kv WHERE key = ?");
-const kvSet = db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value");
 
 const app = createApp({
   users,
@@ -117,7 +115,7 @@ if (serveFrontend) {
 
 const validator = VALIDATE ? createChromiumValidator() : null;
 
-const reset = jobs.resetInterrupted();
+const reset = await jobs.resetInterrupted();
 if (reset > 0) console.log(`[worker] 中断していたジョブ ${reset} 件をやり直します`);
 
 const cron = startCron(
@@ -125,11 +123,7 @@ const cron = startCron(
     consumer: { users, jobs, gallery },
     pull: {
       ...(JETSTREAM_URL ? { url: JETSTREAM_URL } : {}),
-      loadCursor() {
-        const row = kvGet.get("jetstream_cursor") as { value: string } | undefined;
-        return row ? Number(row.value) : undefined;
-      },
-      saveCursor: (cursor) => void kvSet.run("jetstream_cursor", String(cursor)),
+      ...cursorStore(db),
       feedAgent: publicAgent,
     },
     runner: {
@@ -141,7 +135,7 @@ const cron = startCron(
       validate: async (record) => {
         await validator?.validate(record);
       },
-      onSaved: (artwork) => void gallery.upsert(artwork),
+      onSaved: (artwork) => gallery.upsert(artwork),
       timeZone: TZ_NAME,
     },
   },

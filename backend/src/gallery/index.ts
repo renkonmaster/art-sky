@@ -12,7 +12,7 @@
  * 次の作品の生成は PDS の作品から前作品を探すので（jobs/runner.ts）、ここに過去の作品がなくても困らない。
  */
 import { ArtworkRecord, type ArtworkView, type AuthorView } from "@art-sky/api";
-import { nowIso, type Database } from "../db/database.ts";
+import { nowIso, type Sql } from "../db/database.ts";
 import { ARTWORK_COLLECTION } from "../generation/record.ts";
 import type { User } from "../users.ts";
 
@@ -61,39 +61,26 @@ export function artworkView(artwork: IndexedArtwork, author: User): ArtworkView 
   return { uri: artwork.uri, cid: artwork.cid, author: authorView(author), record: artwork.record, indexedAt: artwork.indexedAt };
 }
 
-export function createGalleryIndex(db: Database) {
-  const upsert = db.prepare(
-    `INSERT INTO artworks (uri, did, rkey, cid, record, created_at, indexed_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (uri) DO UPDATE SET cid = excluded.cid, record = excluded.record, created_at = excluded.created_at`,
-  );
-  const remove = db.prepare("DELETE FROM artworks WHERE uri = ?");
-  const removeOthers = db.prepare("DELETE FROM artworks WHERE did = ? AND rkey <> ?");
-  const removeAllOf = db.prepare("DELETE FROM artworks WHERE did = ?");
-  const newestRkey = db.prepare("SELECT MAX(rkey) AS rkey FROM artworks WHERE did = ?");
-  const byUri = db.prepare("SELECT * FROM artworks WHERE uri = ?");
-  // レコードキー（TID）は時刻順に並ぶので、作品の新旧はレコードキーで決める。
-  const byDid = db.prepare("SELECT * FROM artworks WHERE did = ? ORDER BY rkey DESC LIMIT ? OFFSET ?");
-  const older = db.prepare("SELECT * FROM artworks WHERE did = ? AND rkey < ? ORDER BY rkey DESC LIMIT 1");
-  const newer = db.prepare("SELECT * FROM artworks WHERE did = ? AND rkey > ? ORDER BY rkey ASC LIMIT 1");
-  // 掲載中の参加者ごとに最新の 1 件。更新が新しい順。
-  const latest = db.prepare(
-    `SELECT a.* FROM artworks a JOIN users u ON u.did = a.did
-     WHERE u.consented_at IS NOT NULL AND u.listed = 1
-       AND a.rkey = (SELECT MAX(b.rkey) FROM artworks b WHERE b.did = a.did)
-     ORDER BY a.created_at DESC, a.uri LIMIT ? OFFSET ?`,
-  );
+export function createGalleryIndex(db: Sql) {
+  const one = async (sql: string, ...params: (string | number)[]) => {
+    const row = await db.get<ArtworkRow>(sql, ...params);
+    return row ? toArtwork(row) : undefined;
+  };
+  const many = async (sql: string, ...params: (string | number)[]) => (await db.all<ArtworkRow>(sql, ...params)).map(toArtwork);
 
   return {
     /**
      * 作品を索引に入れる。レコードの形式が正しくなければ入れずに false を返す。
      * すでにもっと新しい作品があれば入れない。入れたら、その人の古い作品は索引から消す。
      */
-    upsert(input: { did: string; rkey: string; cid: string; record: unknown }): boolean {
+    async upsert(input: { did: string; rkey: string; cid: string; record: unknown }): Promise<boolean> {
       const parsed = ArtworkRecord.safeParse(input.record);
       if (!parsed.success) return false;
-      const newest = (newestRkey.get(input.did) as { rkey: string | null } | undefined)?.rkey;
+      const newest = (await db.get<{ rkey: string | null }>("SELECT MAX(rkey) AS rkey FROM artworks WHERE did = ?", input.did))?.rkey;
       if (newest && newest > input.rkey) return true;
-      upsert.run(
+      await db.run(
+        `INSERT INTO artworks (uri, did, rkey, cid, record, created_at, indexed_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (uri) DO UPDATE SET cid = excluded.cid, record = excluded.record, created_at = excluded.created_at`,
         artworkUri(input.did, input.rkey),
         input.did,
         input.rkey,
@@ -102,36 +89,42 @@ export function createGalleryIndex(db: Database) {
         parsed.data.createdAt,
         nowIso(),
       );
-      removeOthers.run(input.did, input.rkey);
+      await db.run("DELETE FROM artworks WHERE did = ? AND rkey <> ?", input.did, input.rkey);
       return true;
     },
-    remove(did: string, rkey: string): void {
-      remove.run(artworkUri(did, rkey));
+    async remove(did: string, rkey: string): Promise<void> {
+      await db.run("DELETE FROM artworks WHERE uri = ?", artworkUri(did, rkey));
     },
     /** その人の索引を、PDS から読んだ一覧のうち最新の作品 1 件だけにする。入れた件数（0 か 1）を返す。 */
-    replaceAll(did: string, records: ReadonlyArray<{ rkey: string; cid: string; record: unknown }>): number {
+    async replaceAll(did: string, records: ReadonlyArray<{ rkey: string; cid: string; record: unknown }>): Promise<number> {
       const valid = records.filter((r) => ArtworkRecord.safeParse(r.record).success);
       const newest = valid.reduce<(typeof valid)[number] | undefined>((a, r) => (!a || r.rkey > a.rkey ? r : a), undefined);
-      removeAllOf.run(did);
-      return newest && this.upsert({ did, ...newest }) ? 1 : 0;
+      await db.run("DELETE FROM artworks WHERE did = ?", did);
+      return newest && (await this.upsert({ did, ...newest })) ? 1 : 0;
     },
-    get(uri: string): IndexedArtwork | undefined {
-      const row = byUri.get(uri) as ArtworkRow | undefined;
-      return row ? toArtwork(row) : undefined;
+    get(uri: string): Promise<IndexedArtwork | undefined> {
+      return one("SELECT * FROM artworks WHERE uri = ?", uri);
     },
-    /** 1 人の作品を新しい順に。 */
-    listByDid(did: string, limit: number, offset: number): IndexedArtwork[] {
-      return (byDid.all(did, limit, offset) as unknown as ArtworkRow[]).map(toArtwork);
+    /** 1 人の作品を新しい順に（レコードキーは時刻順に並ぶので、新旧はレコードキーで決める）。 */
+    listByDid(did: string, limit: number, offset: number): Promise<IndexedArtwork[]> {
+      return many("SELECT * FROM artworks WHERE did = ? ORDER BY rkey DESC LIMIT ? OFFSET ?", did, limit, offset);
     },
     /** 掲載中の参加者ごとの最新作品を、更新が新しい順に。 */
-    listLatest(limit: number, offset: number): IndexedArtwork[] {
-      return (latest.all(limit, offset) as unknown as ArtworkRow[]).map(toArtwork);
+    listLatest(limit: number, offset: number): Promise<IndexedArtwork[]> {
+      return many(
+        `SELECT a.* FROM artworks a JOIN users u ON u.did = a.did
+         WHERE u.consented_at IS NOT NULL AND u.listed = 1
+           AND a.rkey = (SELECT MAX(b.rkey) FROM artworks b WHERE b.did = a.did)
+         ORDER BY a.created_at DESC, a.uri LIMIT ? OFFSET ?`,
+        limit,
+        offset,
+      );
     },
     /** 同じ作者の 1 つ前（古い）と 1 つ後（新しい）の作品。 */
-    neighbors(artwork: IndexedArtwork): { previous?: IndexedArtwork; next?: IndexedArtwork } {
-      const prev = older.get(artwork.did, artwork.rkey) as ArtworkRow | undefined;
-      const next = newer.get(artwork.did, artwork.rkey) as ArtworkRow | undefined;
-      return { ...(prev ? { previous: toArtwork(prev) } : {}), ...(next ? { next: toArtwork(next) } : {}) };
+    async neighbors(artwork: IndexedArtwork): Promise<{ previous?: IndexedArtwork; next?: IndexedArtwork }> {
+      const prev = await one("SELECT * FROM artworks WHERE did = ? AND rkey < ? ORDER BY rkey DESC LIMIT 1", artwork.did, artwork.rkey);
+      const next = await one("SELECT * FROM artworks WHERE did = ? AND rkey > ? ORDER BY rkey ASC LIMIT 1", artwork.did, artwork.rkey);
+      return { ...(prev ? { previous: prev } : {}), ...(next ? { next } : {}) };
     },
   };
 }

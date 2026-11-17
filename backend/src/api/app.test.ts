@@ -107,7 +107,7 @@ describe("認証", () => {
     expect(authorizeArgs).toEqual(["alice.test", expect.objectContaining({ state: "/manage" })]);
   });
 
-  it("このサイトからは投稿しないので、投稿の権限を求めない", () => {
+  it("このサイトからは投稿しないので、投稿の権限を求めない", async () => {
     expect((authorizeArgs[1] as { scope?: string } | undefined)?.scope ?? "").not.toContain("app.bsky.feed.post");
   });
 
@@ -165,7 +165,7 @@ describe("内部 API", () => {
     expect(kicks).toBe(1); // 次の定期実行を待たずに生成を始める
 
     await expectError(await post("/api/register", CONSENT), 409, "AlreadyRegistered");
-    expect(jobs.listByDid(ALICE)).toHaveLength(1);
+    expect(await jobs.listByDid(ALICE)).toHaveLength(1);
   });
 
   it("投稿の API はない", async () => {
@@ -175,7 +175,7 @@ describe("内部 API", () => {
 
   it("ジョブの一覧・取得・再試行", async () => {
     const { job } = routes.register.response.parse(await (await post("/api/register", CONSENT)).json());
-    jobs.enqueueEvolution(ALICE, `at://${ALICE}/app.bsky.feed.post/3post1`, "3post1", CID);
+    await jobs.enqueueEvolution(ALICE, `at://${ALICE}/app.bsky.feed.post/3post1`, "3post1", CID);
 
     const list = routes.listJobs.response.parse(await (await call("/api/jobs")).json());
     expect(list.jobs.map((j) => j.kind)).toEqual(["evolution", "genesis"]); // 新しい順
@@ -187,8 +187,8 @@ describe("内部 API", () => {
     expect(queued.jobs).toHaveLength(0);
 
     await expectError(await post(`/api/jobs/${job.id}/retry`), 409, "JobNotRetryable");
-    jobs.claimNext();
-    jobs.fail(Number(job.id), "生成したコードが何も描きませんでした", "validation_failed");
+    await jobs.claimNext();
+    await jobs.fail(Number(job.id), "生成したコードが何も描きませんでした", "validation_failed");
     const failed = routes.getJob.response.parse(await (await call(`/api/jobs/${job.id}`)).json()).job;
     expect(failed).toMatchObject({ status: "failed", error: { code: "validation_failed", retryable: true }, attempts: 1 });
 
@@ -198,8 +198,8 @@ describe("内部 API", () => {
     expect(routes.retryJob.response.parse(await retried.json()).job.status).toBe("queued");
     expect(kicks).toBe(kicksBefore + 1);
 
-    jobs.claimNext();
-    jobs.complete(Number(job.id), { uri: `at://${ALICE}/com.example.artsky.artwork/3tid1`, cid: CID });
+    await jobs.claimNext();
+    await jobs.complete(Number(job.id), { uri: `at://${ALICE}/com.example.artsky.artwork/3tid1`, cid: CID });
     const done = routes.getJob.response.parse(await (await call(`/api/jobs/${job.id}`)).json()).job;
     expect(done).toMatchObject({ status: "done", artwork: { cid: CID } });
     expect(done.error).toBeUndefined();
@@ -228,10 +228,10 @@ describe("ギャラリー API", () => {
     await post("/api/register", CONSENT);
     const bob = await login(BOB);
     await post("/api/register", CONSENT, bob);
-    gallery.upsert({ did: ALICE, rkey: "3aaa1", cid: CID, record: record("はじまり", "2026-11-10T00:00:00.000Z") });
-    gallery.upsert({ did: ALICE, rkey: "3aaa2", cid: CID, record: record("二作目", "2026-11-12T00:00:00.000Z") });
-    gallery.upsert({ did: ALICE, rkey: "3aaa3", cid: CID, record: record("三作目", "2026-11-14T00:00:00.000Z") });
-    gallery.upsert({ did: BOB, rkey: "3bbb1", cid: CID, record: record("ボブの作品", "2026-11-13T00:00:00.000Z") });
+    await gallery.upsert({ did: ALICE, rkey: "3aaa1", cid: CID, record: record("はじまり", "2026-11-10T00:00:00.000Z") });
+    await gallery.upsert({ did: ALICE, rkey: "3aaa2", cid: CID, record: record("二作目", "2026-11-12T00:00:00.000Z") });
+    await gallery.upsert({ did: ALICE, rkey: "3aaa3", cid: CID, record: record("三作目", "2026-11-14T00:00:00.000Z") });
+    await gallery.upsert({ did: BOB, rkey: "3bbb1", cid: CID, record: record("ボブの作品", "2026-11-13T00:00:00.000Z") });
   });
 
   it("listLatest は参加者ごとに最新の 1 件を、新しい順に返す（ログイン不要）", async () => {
@@ -284,9 +284,9 @@ describe("ギャラリー API", () => {
     await expectError(await call(`${routes.getArtwork.path}?uri=${uri}`, {}, null), 404, "NotFound");
   });
 
-  it("形式の正しくないレコードは索引に入らない", () => {
-    expect(gallery.upsert({ did: BOB, rkey: "3bbb2", cid: CID, record: { ...record("x", "2026-11-14T00:00:00.000Z"), seed: -1 } })).toBe(false);
-    expect(gallery.upsert({ did: BOB, rkey: "3bbb3", cid: CID, record: "<script>" })).toBe(false);
-    expect(gallery.listByDid(BOB, 10, 0)).toHaveLength(1);
+  it("形式の正しくないレコードは索引に入らない", async () => {
+    expect(await gallery.upsert({ did: BOB, rkey: "3bbb2", cid: CID, record: { ...record("x", "2026-11-14T00:00:00.000Z"), seed: -1 } })).toBe(false);
+    expect(await gallery.upsert({ did: BOB, rkey: "3bbb3", cid: CID, record: "<script>" })).toBe(false);
+    expect(await gallery.listByDid(BOB, 10, 0)).toHaveLength(1);
   });
 });

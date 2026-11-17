@@ -69,7 +69,7 @@ frontend/              画面。開発時はモックでバックエンドなし
 | API | Hono 4 + `@hono/node-server` | 軽量で型が強い |
 | ログイン | `@atproto/oauth-client-node` | AT Protocol 公式の OAuth クライアント |
 | Bluesky API | `@atproto/api` | 投稿とプロフィールの取得、レコード書き込み |
-| DB | SQLite（Node.js 標準の `node:sqlite`） | 初期版は 1 台で足りる。ネイティブモジュールのビルドが要らない。表が少ないので ORM は使わず SQL を直接書く |
+| DB | SQLite（Node.js では `node:sqlite`、Cloudflare Workers では D1） | リポジトリは非同期の `Sql`（get / all / run）だけを使うので、同じ SQL がどちらでも動く（`backend/src/db/`）。表が少ないので ORM は使わず SQL を直接書く。D1 のスキーマは `backend/migrations/` |
 | ジョブ | SQLite のジョブテーブルを定期実行（1 分ごと）で処理 | Redis などを増やさずに済む。Cloudflare Workers の Cron でも同じ形で動く |
 | 作品の生成 | 規則による推定（`@art-sky/art`） | 外部 API に投稿を送らず、費用もかからない。同じ入力からは同じ作品になる |
 | 生成結果の検証 | Playwright + ヘッドレス Chromium | ギャラリーと同じブラウザ・同じ renderer で実行できる |
@@ -121,7 +121,7 @@ OAuth のスコープは必要な操作だけに絞る。
 |---|---|---|
 | 購読 | Jetstream（Node.js 標準の WebSocket） | `wantedCollections` で作品レコードだけを受け取れる |
 | API | Hono 4、Lexicon で定義した XRPC query | 他のクライアントからも使える |
-| DB | SQLite（`node:sqlite`） | generator とは別のファイルにする |
+| DB | 生成側と同じ DB（`artworks` テーブル） | 1 つのサーバーの中でモジュールを分けている |
 | DID の解決 | `@atproto/identity` | DID からハンドル名と PDS を調べる |
 
 - Jetstream のカーソルを DB に保存し、次の定期実行で続きから受け取る。

@@ -63,11 +63,11 @@ const dbPath = path.join(dir, "e2e.sqlite");
   });
   const post = (did: string, rkey: string) => ({ uri: `at://${did}/app.bsky.feed.post/${rkey}`, cid: CID });
 
-  users.touch(ALICE, { handle: "alice.e2e.test", displayName: "アリス" });
-  users.consent(ALICE);
-  assert(gallery.upsert({ did: ALICE, rkey: "3e2ea1", cid: CID, record: record("はじまり", "2026-11-10T03:00:00.000Z") }), "seed");
+  await users.touch(ALICE, { handle: "alice.e2e.test", displayName: "アリス" });
+  await users.consent(ALICE);
+  assert(await gallery.upsert({ did: ALICE, rkey: "3e2ea1", cid: CID, record: record("はじまり", "2026-11-10T03:00:00.000Z") }), "seed");
   assert(
-    gallery.upsert({
+    await gallery.upsert({
       did: ALICE,
       rkey: "3e2ea2",
       cid: CID,
@@ -80,16 +80,16 @@ const dbPath = path.join(dir, "e2e.sqlite");
     }),
     "seed",
   );
-  const done = jobs.enqueueGenesis(ALICE, "3e2ea1");
-  jobs.claimNext();
-  jobs.complete(done.id, { uri: `at://${ALICE}/com.example.artsky.artwork/3e2ea1`, cid: CID });
+  const done = await jobs.enqueueGenesis(ALICE, "3e2ea1");
+  await jobs.claimNext();
+  await jobs.complete(done.id, { uri: `at://${ALICE}/com.example.artsky.artwork/3e2ea1`, cid: CID });
 
-  users.touch(BOB, { handle: "bob.e2e.test" });
-  users.consent(BOB);
-  assert(gallery.upsert({ did: BOB, rkey: "3e2eb1", cid: CID, record: record("星", "2026-11-14T03:00:00.000Z", { seed: 20261114 }) }), "seed");
+  await users.touch(BOB, { handle: "bob.e2e.test" });
+  await users.consent(BOB);
+  assert(await gallery.upsert({ did: BOB, rkey: "3e2eb1", cid: CID, record: record("星", "2026-11-14T03:00:00.000Z", { seed: 20261114 }) }), "seed");
 
   // キャロルはログインしただけで、まだ登録していない。
-  users.touch(CAROL, { handle: "carol.e2e.test" });
+  await users.touch(CAROL, { handle: "carol.e2e.test" });
   db.close();
 }
 

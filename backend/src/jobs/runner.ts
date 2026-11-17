@@ -28,7 +28,7 @@ export interface RunnerDeps {
    */
   validate(record: ArtworkRecord): Promise<void>;
   /** PDS に保存した作品を、ギャラリーの索引にすぐ入れる。 */
-  onSaved?(artwork: { did: string; rkey: string; cid: string; record: ArtworkRecord }): void;
+  onSaved?(artwork: { did: string; rkey: string; cid: string; record: ArtworkRecord }): void | Promise<unknown>;
   timeZone: string;
 }
 
@@ -149,7 +149,7 @@ export async function runJob(deps: RunnerDeps, job: Job): Promise<StrongRef> {
   const agent = await deps.getUserAgent(job.did);
   const built = await buildInput(deps, job, agent);
   if (built.applied) {
-    deps.jobs.complete(job.id, built.applied);
+    await deps.jobs.complete(job.id, built.applied);
     return built.applied;
   }
   const { input, refs } = built;
@@ -158,10 +158,10 @@ export async function runJob(deps: RunnerDeps, job: Job): Promise<StrongRef> {
   const seed = result.artwork.params.seed;
   const record = buildArtworkRecord(input, result, refs, typeof seed === "number" ? { seed } : {});
 
-  deps.jobs.setStatus(job.id, "validating");
+  await deps.jobs.setStatus(job.id, "validating");
   await deps.validate(record);
 
-  deps.jobs.setStatus(job.id, "saving");
+  await deps.jobs.setStatus(job.id, "saving");
   let saved: { uri: string; cid: string };
   try {
     const { data } = await agent.com.atproto.repo.putRecord({
@@ -174,8 +174,8 @@ export async function runJob(deps: RunnerDeps, job: Job): Promise<StrongRef> {
   } catch (err) {
     throw new JobError(`PDS に保存できませんでした: ${(err as Error).message}`, "pds_write_failed");
   }
-  deps.jobs.complete(job.id, saved);
-  deps.onSaved?.({ did: job.did, rkey: ARTWORK_RKEY, cid: saved.cid, record });
+  await deps.jobs.complete(job.id, saved);
+  await deps.onSaved?.({ did: job.did, rkey: ARTWORK_RKEY, cid: saved.cid, record });
   try {
     const n = await deleteOldArtworks(agent, job.did);
     if (n > 0) console.log(`[worker] ${job.did}: 以前の方式の作品 ${n} 件を PDS から削除しました`);

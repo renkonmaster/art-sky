@@ -1,6 +1,11 @@
 /**
- * サービス側の DB（Plan.md 7.2）。Node.js 標準の node:sqlite を使う。
- * 作品の正本は本人の PDS にあり、ここには参加者・ジョブ・認証の維持に必要な情報だけを置く。
+ * サービス側の DB（Plan.md 7.2）。作品の正本は本人の PDS にあり、
+ * ここには参加者・ジョブ・認証の維持に必要な情報だけを置く。
+ *
+ * リポジトリは Sql（非同期の get / all / run）だけを使う。
+ *   - Node.js：node:sqlite を包んだもの（openDatabase）
+ *   - Cloudflare Workers：D1 を包んだもの（d1.ts）
+ * どちらも SQLite なので、SQL は同じものを使う。
  */
 import { DatabaseSync } from "node:sqlite";
 
@@ -78,7 +83,25 @@ const ADDED_COLUMNS: ReadonlyArray<[table: string, column: string, definition: s
   ["jobs", "error_code", "TEXT"],
 ];
 
-export type Database = DatabaseSync;
+/** SQL の実行。D1 の API に合わせて非同期にしている。 */
+export interface Sql {
+  get<T = Record<string, unknown>>(sql: string, ...params: SqlValue[]): Promise<T | undefined>;
+  all<T = Record<string, unknown>>(sql: string, ...params: SqlValue[]): Promise<T[]>;
+  run(sql: string, ...params: SqlValue[]): Promise<{ changes: number }>;
+}
+export type SqlValue = string | number | null;
+
+/** Node.js の SQLite。Sql に加えて、同期で直接触れる raw と close を持つ（テストやスクリプト用）。 */
+export interface Database extends Sql {
+  raw: DatabaseSync;
+  close(): void;
+}
+
+/** 全体のスキーマ。D1 のマイグレーション（migrations/）はこれと同じ内容にする。 */
+export function schemaSql(): string {
+  const added = ADDED_COLUMNS.map(([table, column, definition]) => `ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
+  return `${SCHEMA.trim()}\n\n${added.join("\n")}\n`;
+}
 
 /** path に ":memory:" を渡すとメモリ上の DB になる（テスト用）。 */
 export function openDatabase(path: string): Database {
@@ -89,7 +112,41 @@ export function openDatabase(path: string): Database {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
-  return db;
+  const cache = new Map<string, ReturnType<DatabaseSync["prepare"]>>();
+  const stmt = (sql: string) => {
+    let st = cache.get(sql);
+    if (!st) cache.set(sql, (st = db.prepare(sql)));
+    return st;
+  };
+  return {
+    raw: db,
+    close: () => db.close(),
+    async get<T>(sql: string, ...params: SqlValue[]) {
+      return stmt(sql).get(...params) as T | undefined;
+    },
+    async all<T>(sql: string, ...params: SqlValue[]) {
+      return stmt(sql).all(...params) as T[];
+    },
+    async run(sql: string, ...params: SqlValue[]) {
+      return { changes: Number(stmt(sql).run(...params).changes) };
+    },
+  };
 }
 
 export const nowIso = (): string => new Date().toISOString();
+
+/** Jetstream のカーソル（最後に処理したイベントの時刻）の保存先。kv テーブルに置く。 */
+export function cursorStore(db: Sql) {
+  return {
+    async loadCursor(): Promise<number | undefined> {
+      const row = await db.get<{ value: string }>("SELECT value FROM kv WHERE key = 'jetstream_cursor'");
+      return row ? Number(row.value) : undefined;
+    },
+    async saveCursor(cursor: number): Promise<void> {
+      await db.run(
+        "INSERT INTO kv (key, value) VALUES ('jetstream_cursor', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        String(cursor),
+      );
+    },
+  };
+}

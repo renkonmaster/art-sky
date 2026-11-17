@@ -49,20 +49,20 @@ function isPlainPost(record: unknown): boolean {
  * イベント 1 件を処理する。何をしたかを返す（ログとテスト用）。
  * 同じイベントが二度届いても結果は変わらない（ジョブは元投稿ごとに 1 つ、索引は上書き）。
  */
-export function handleEvent(deps: ConsumerDeps, event: JetstreamEvent): "job" | "indexed" | "removed" | "ignored" {
+export async function handleEvent(deps: ConsumerDeps, event: JetstreamEvent): Promise<"job" | "indexed" | "removed" | "ignored"> {
   const commit = event.commit;
   if (event.kind !== "commit" || !commit) return "ignored";
-  const user = deps.users.get(event.did);
+  const user = await deps.users.get(event.did);
   // 登録していない人のレコードは扱わない（購読の絞り込みをすり抜けた場合の備え）。
   if (!user || user.consentedAt === null) return "ignored";
 
   if (commit.collection === ARTWORK_COLLECTION) {
     if (commit.operation === "delete") {
-      deps.gallery.remove(event.did, commit.rkey);
+      await deps.gallery.remove(event.did, commit.rkey);
       return "removed";
     }
     if (!commit.cid) return "ignored";
-    return deps.gallery.upsert({ did: event.did, rkey: commit.rkey, cid: commit.cid, record: commit.record }) ? "indexed" : "ignored";
+    return (await deps.gallery.upsert({ did: event.did, rkey: commit.rkey, cid: commit.cid, record: commit.record })) ? "indexed" : "ignored";
   }
 
   if (commit.collection === POST_COLLECTION && commit.operation === "create") {
@@ -70,7 +70,7 @@ export function handleEvent(deps: ConsumerDeps, event: JetstreamEvent): "job" | 
     if (!isPlainPost(commit.record)) return "ignored";
     // 登録より前の投稿は対象外（カーソルを巻き戻して再生したときの備え）。
     if (event.time_us / 1000 < Date.parse(user.consentedAt)) return "ignored";
-    deps.jobs.enqueueEvolution(event.did, `at://${event.did}/${POST_COLLECTION}/${commit.rkey}`, commit.rkey, commit.cid ?? null);
+    await deps.jobs.enqueueEvolution(event.did, `at://${event.did}/${POST_COLLECTION}/${commit.rkey}`, commit.rkey, commit.cid ?? null);
     return "job";
   }
   return "ignored";
@@ -80,8 +80,8 @@ export interface PullOptions {
   /** Jetstream のエンドポイント。 */
   url?: string;
   /** カーソル（最後に処理したイベントの時刻、マイクロ秒）の読み書き。 */
-  loadCursor(): number | undefined;
-  saveCursor(cursor: number): void;
+  loadCursor(): Promise<number | undefined> | number | undefined;
+  saveCursor(cursor: number): Promise<void> | void;
   /** 接続を作る。テストで差し替えられるようにしている。 */
   createSocket?: (url: string) => WebSocket;
   /** カーソルが古すぎて続きを読めないときに、投稿を取り直すのに使う（公開 AppView）。 */
@@ -141,12 +141,12 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
   const maxMs = options.maxMs ?? 20_000;
   const result: PullResult = { outcome: "pulled", events: 0, jobs: 0, backfilled: 0 };
 
-  const dids = deps.users.listRegistered().map((u) => u.did);
+  const dids = (await deps.users.listRegistered()).map((u) => u.did);
   if (dids.length === 0) return { ...result, outcome: "no-users" };
   if (dids.length > MAX_WANTED_DIDS) log(`登録者が ${MAX_WANTED_DIDS} 人を超えています。超えた分の投稿は拾えません`);
 
   const startedUs = now() * 1000;
-  let cursor = options.loadCursor();
+  let cursor = await options.loadCursor();
   if (cursor !== undefined && startedUs - cursor > MAX_CURSOR_AGE_US) {
     log(`カーソルが古すぎるので（${new Date(cursor / 1000).toISOString()}）、直近の投稿を取り直します`);
     if (options.feedAgent) result.backfilled = await backfill(deps, options.feedAgent, dids, cursor, log, result);
@@ -175,6 +175,8 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
     }
     let idle: ReturnType<typeof setTimeout> | undefined;
     let done = false;
+    /** イベントは届いた順に 1 件ずつ処理する（DB への書き込みが非同期なので、順番を保つ）。 */
+    let queue: Promise<void> = Promise.resolve();
     const finish = () => {
       if (done) return;
       done = true;
@@ -185,7 +187,7 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
       } catch {
         // すでに閉じている
       }
-      resolve();
+      void queue.then(resolve); // 処理中のイベントを終えてから返す
     };
     const limit = setTimeout(() => {
       log(`上限の ${maxMs / 1000} 秒に達したので、残りは次回にします`);
@@ -206,21 +208,29 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
     ws.addEventListener("message", (message) => {
       if (done) return;
       resetIdle();
+      let event: JetstreamEvent;
       try {
-        const event = JSON.parse(String(message.data)) as JetstreamEvent;
-        if (typeof event.time_us !== "number") return;
-        const handled = handleEvent(deps, event);
-        result.events++;
-        if (handled === "job") result.jobs++;
-        if (handled !== "ignored") log(`${event.did} ${event.commit?.collection}/${event.commit?.rkey}: ${handled}`);
-        last = event.time_us;
-        if (event.time_us >= startedUs) {
-          caughtUp = true; // 接続した時刻まで追いついた
-          finish();
-        }
-      } catch (err) {
-        log(`イベントを処理できませんでした: ${(err as Error).message}`);
+        event = JSON.parse(String(message.data)) as JetstreamEvent;
+      } catch {
+        return;
       }
+      if (typeof event.time_us !== "number") return;
+      if (event.time_us >= startedUs) {
+        caughtUp = true; // 接続した時刻まで追いついた。このイベントまで処理して終える
+        clearTimeout(idle);
+      }
+      queue = queue.then(async () => {
+        try {
+          const handled = await handleEvent(deps, event);
+          result.events++;
+          if (handled === "job") result.jobs++;
+          if (handled !== "ignored") log(`${event.did} ${event.commit?.collection}/${event.commit?.rkey}: ${handled}`);
+          last = event.time_us;
+        } catch (err) {
+          log(`イベントを処理できませんでした: ${(err as Error).message}`);
+        }
+      });
+      if (caughtUp) finish();
     });
     ws.addEventListener("close", () => {
       if (!opened && !done) {
@@ -237,7 +247,7 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
   // 追いついたなら、接続した時刻までは受け取り済み。イベントがなくてもカーソルを進め、
   // 次回に古いところから読み直さないようにする（読み直しの分だけ手前にしておく）。
   if (caughtUp) last = Math.max(last ?? 0, startedUs - REWIND_US);
-  if (last !== undefined && last !== cursor) options.saveCursor(last);
+  if (last !== undefined && last !== cursor) await options.saveCursor(last);
   return result;
 }
 
@@ -264,7 +274,7 @@ async function backfill(
         .filter((p) => Number.isFinite(p.createdAt) && p.createdAt * 1000 > sinceUs)
         .sort((a, b) => a.createdAt - b.createdAt);
       for (const p of posts) {
-        const handled = handleEvent(deps, {
+        const handled = await handleEvent(deps, {
           did,
           time_us: p.createdAt * 1000,
           kind: "commit",

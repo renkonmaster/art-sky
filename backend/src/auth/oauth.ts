@@ -6,7 +6,7 @@
  * state と session は SQLite に保存する（db/oauthStores.ts）。
  */
 import { NodeOAuthClient } from "@atproto/oauth-client-node";
-import type { Database } from "../db/database.ts";
+import type { Sql } from "../db/database.ts";
 import { createOAuthStores } from "../db/oauthStores.ts";
 import { ARTWORK_COLLECTION } from "../generation/record.ts";
 
@@ -33,7 +33,7 @@ function createInProcessLock() {
   };
 }
 
-export function createOAuthClient({ db, publicUrl, port }: { db: Database; publicUrl?: string; port: number }): NodeOAuthClient {
+export function createOAuthClient({ db, publicUrl, port }: { db: Sql; publicUrl?: string; port: number }): NodeOAuthClient {
   const isLoopback = !publicUrl;
   const base = isLoopback ? `http://127.0.0.1:${port}` : publicUrl.replace(/\/$/, "");
   const redirectUri = `${base}/oauth/callback` as const;

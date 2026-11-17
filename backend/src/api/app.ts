@@ -110,10 +110,14 @@ export function meJson(u: User): Me {
   };
 }
 
-function paginate<T>(fetchPage: (limit: number, offset: number) => T[], limit: number, cursor: string | undefined): { page: T[]; cursor?: string } {
+async function paginate<T>(
+  fetchPage: (limit: number, offset: number) => Promise<T[]>,
+  limit: number,
+  cursor: string | undefined,
+): Promise<{ page: T[]; cursor?: string }> {
   const offset = cursor && /^\d+$/.test(cursor) ? Number(cursor) : 0;
   // 1 件多く取って、続きがあるかを調べる。
-  const rows = fetchPage(limit + 1, offset);
+  const rows = await fetchPage(limit + 1, offset);
   return rows.length > limit ? { page: rows.slice(0, limit), cursor: String(offset + limit) } : { page: rows };
 }
 
@@ -149,7 +153,7 @@ export function createApp(deps: AppDeps) {
     const params = new URL(c.req.url).searchParams;
     try {
       const { session, state } = await deps.oauth.callback(params);
-      deps.users.touch(session.did, await deps.resolveProfile(session.did));
+      await deps.users.touch(session.did, await deps.resolveProfile(session.did));
       await setSignedCookie(c, COOKIE, session.did, deps.cookieSecret, {
         httpOnly: true,
         sameSite: "Lax",
@@ -203,16 +207,16 @@ export function createApp(deps: AppDeps) {
     // 推定結果が作品と一緒に公開されることへの同意が必須。
     parse(RegisterRequest, await readJson(c));
     if (user.consentedAt !== null) throw new ApiError("AlreadyRegistered", "初回登録は済んでいます");
-    const registered = deps.users.consent(user.did);
-    const job = deps.jobs.enqueueGenesis(user.did, deps.newTid());
+    const registered = await deps.users.consent(user.did);
+    const job = await deps.jobs.enqueueGenesis(user.did, deps.newTid());
     deps.onJobQueued?.();
     return c.json({ me: meJson(registered), job: jobJson(job) }, 202);
   });
 
-  api.get("/jobs", (c) => {
+  api.get("/jobs", async (c) => {
     const user = requireRegistered(c);
     const query = parse(ListJobsQuery, c.req.query());
-    const { page, cursor } = paginate(
+    const { page, cursor } = await paginate(
       (limit, offset) => deps.jobs.listByDid(user.did, limit, offset, query.status),
       query.limit,
       query.cursor,
@@ -220,21 +224,21 @@ export function createApp(deps: AppDeps) {
     return c.json({ jobs: page.map(jobJson), ...(cursor ? { cursor } : {}) });
   });
 
-  const ownJob = (c: Context<Env>): Job => {
+  const ownJob = async (c: Context<Env>): Promise<Job> => {
     const user = requireRegistered(c);
     const id = c.req.param("id") ?? "";
-    const job = /^\d+$/.test(id) ? deps.jobs.get(Number(id)) : undefined;
+    const job = /^\d+$/.test(id) ? await deps.jobs.get(Number(id)) : undefined;
     if (!job || job.did !== user.did) throw new ApiError("NotFound", "ジョブが見つかりません");
     return job;
   };
 
-  api.get("/jobs/:id", (c) => c.json({ job: jobJson(ownJob(c)) }));
+  api.get("/jobs/:id", async (c) => c.json({ job: jobJson(await ownJob(c)) }));
 
-  api.post("/jobs/:id/retry", (c) => {
-    const job = ownJob(c);
-    if (!deps.jobs.retry(job.id)) throw new ApiError("JobNotRetryable", "失敗したジョブだけ再試行できます");
+  api.post("/jobs/:id/retry", async (c) => {
+    const job = await ownJob(c);
+    if (!(await deps.jobs.retry(job.id))) throw new ApiError("JobNotRetryable", "失敗したジョブだけ再試行できます");
     deps.onJobQueued?.();
-    return c.json({ job: jobJson(deps.jobs.get(job.id)!) }, 202);
+    return c.json({ job: jobJson((await deps.jobs.get(job.id))!) }, 202);
   });
 
   api.get("/settings", (c) => {
@@ -245,7 +249,7 @@ export function createApp(deps: AppDeps) {
   api.patch("/settings", async (c) => {
     const user = requireRegistered(c);
     const patch = parse(UpdateSettingsRequest, await readJson(c));
-    const next = deps.users.updateSettings(user.did, {
+    const next = await deps.users.updateSettings(user.did, {
       generationEnabled: patch.generationEnabled ?? user.generationEnabled,
       listed: patch.listed ?? user.listed,
     });
@@ -257,35 +261,36 @@ export function createApp(deps: AppDeps) {
   // ------------------------------------------------------------ ギャラリー API（XRPC、ログイン不要）
 
   /** 掲載中（登録済みで、掲載を止めていない）の参加者。 */
-  const listedUser = (actor: string): User | undefined => {
-    const user = deps.users.find(actor);
+  const listedUser = async (actor: string): Promise<User | undefined> => {
+    const user = await deps.users.find(actor);
     return user && user.consentedAt !== null && user.listed ? user : undefined;
   };
 
-  app.get(`/xrpc/${GALLERY_NSID.listLatest}`, (c) => {
+  app.get(`/xrpc/${GALLERY_NSID.listLatest}`, async (c) => {
     const query = parse(ListLatestParams, c.req.query());
-    const { page, cursor } = paginate((limit, offset) => deps.gallery.listLatest(limit, offset), query.limit, query.cursor);
-    const items = page.flatMap((artwork) => {
-      const author = deps.users.get(artwork.did);
+    const { page, cursor } = await paginate((limit, offset) => deps.gallery.listLatest(limit, offset), query.limit, query.cursor);
+    const authors = await Promise.all(page.map((artwork) => deps.users.get(artwork.did)));
+    const items = page.flatMap((artwork, i) => {
+      const author = authors[i];
       return author ? [artworkView(artwork, author)] : [];
     });
     return c.json({ items, ...(cursor ? { cursor } : {}) });
   });
 
-  app.get(`/xrpc/${GALLERY_NSID.listByActor}`, (c) => {
+  app.get(`/xrpc/${GALLERY_NSID.listByActor}`, async (c) => {
     const query = parse(ListByActorParams, c.req.query());
-    const author = listedUser(query.actor);
+    const author = await listedUser(query.actor);
     if (!author) throw new ApiError("ActorNotFound", "参加者が見つかりません");
-    const { page, cursor } = paginate((limit, offset) => deps.gallery.listByDid(author.did, limit, offset), query.limit, query.cursor);
+    const { page, cursor } = await paginate((limit, offset) => deps.gallery.listByDid(author.did, limit, offset), query.limit, query.cursor);
     return c.json({ author: authorView(author), items: page.map((a) => artworkView(a, author)), ...(cursor ? { cursor } : {}) });
   });
 
-  app.get(`/xrpc/${GALLERY_NSID.getArtwork}`, (c) => {
+  app.get(`/xrpc/${GALLERY_NSID.getArtwork}`, async (c) => {
     const query = parse(GetArtworkParams, c.req.query());
-    const artwork = deps.gallery.get(query.uri);
-    const author = artwork ? listedUser(artwork.did) : undefined;
+    const artwork = await deps.gallery.get(query.uri);
+    const author = artwork ? await listedUser(artwork.did) : undefined;
     if (!artwork || !author) throw new ApiError("NotFound", "作品が見つかりません");
-    const { previous, next } = deps.gallery.neighbors(artwork);
+    const { previous, next } = await deps.gallery.neighbors(artwork);
     return c.json({
       artwork: artworkView(artwork, author),
       ...(previous ? { previous: previous.uri } : {}),

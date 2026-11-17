@@ -35,7 +35,7 @@ export async function runQueuedJobs(deps: RunnerDeps, options: RunJobsOptions = 
   const deadline = now() + budgetMs;
   const result = { done: 0, failed: 0 };
   while (result.done + result.failed < maxJobs && now() < deadline) {
-    const job = deps.jobs.claimNext();
+    const job = await deps.jobs.claimNext();
     if (!job) break;
     log(`job ${job.id} (${job.kind}, ${job.did}) 開始（${job.attempts} 回目）`);
     try {
@@ -45,7 +45,7 @@ export async function runQueuedJobs(deps: RunnerDeps, options: RunJobsOptions = 
     } catch (err) {
       console.error(`[worker] job ${job.id} 失敗:`, err);
       const { code, message } = describeError(err);
-      deps.jobs.fail(job.id, message, code);
+      await deps.jobs.fail(job.id, message, code);
       result.failed++;
     }
   }
