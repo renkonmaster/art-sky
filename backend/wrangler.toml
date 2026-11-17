@@ -15,8 +15,8 @@ run_worker_first = ["/api/*", "/xrpc/*", "/oauth/*", "/client-metadata.json", "/
 [[d1_databases]]
 binding = "DB"
 database_name = "art-sky"
-# wrangler d1 create art-sky で表示された ID に置き換える（ローカルではこのままでよい）
-database_id = "00000000-0000-0000-0000-000000000000"
+# wrangler d1 create art-sky で作ったデータベース
+database_id = "53f02af7-df2b-4e73-9a60-d84b41f9372a"
 migrations_dir = "migrations"
 
 # 1 分ごとに投稿を取り込み、ジョブを処理する（src/cron.ts）
@@ -25,5 +25,7 @@ crons = ["* * * * *"]
 
 [vars]
 TZ_NAME = "Asia/Tokyo"
-# PUBLIC_URL は公開する URL（https://art-sky.<アカウント>.workers.dev など）。デプロイ前に設定する。
+# 公開する URL。OAuth のクライアント ID になるので、変えると全員がログインし直しになる。
+# ローカル（pnpm cf:dev）では .dev.vars に PUBLIC_URL= を書いて空にし、ループバッククライアントで動かす。
+PUBLIC_URL = "https://art-sky.renkon.workers.dev"
 # COOKIE_SECRET は wrangler secret put COOKIE_SECRET で設定する（ローカルでは .dev.vars に書く）。

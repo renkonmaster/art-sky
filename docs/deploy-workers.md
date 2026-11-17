@@ -16,7 +16,7 @@ art-sky は Cloudflare Workers の無料プランだけで動かせる。
 ```sh
 pnpm build                          # リポジトリの直下で。frontend/dist を作る
 cd backend
-echo "COOKIE_SECRET=$(openssl rand -hex 32)" > .dev.vars   # 初回だけ（.dev.vars は git に入れない）
+printf "COOKIE_SECRET=%s\nPUBLIC_URL=\n" "$(openssl rand -hex 32)" > .dev.vars   # 初回だけ（git に入れない）
 pnpm cf:dev                         # ローカルの D1 にスキーマを入れて、http://127.0.0.1:8787 で起動
 ```
 
