@@ -1,5 +1,5 @@
 /**
- * バックエンドの起動。API、ジョブワーカー、Bluesky の投稿の監視を同じプロセスで動かす。
+ * バックエンドの起動。API と、定期実行（投稿の取り込みと作品の生成、cron.ts）を同じプロセスで動かす。
  *   pnpm dev     （.env を読み、変更で再起動）
  *   pnpm start   （本番。frontend をビルドしてあれば、その画面も同じサーバーから配る）
  */
@@ -17,9 +17,9 @@ import { openDatabase } from "./db/database.ts";
 import { createGalleryIndex } from "./gallery/index.ts";
 import { syncArtworksFromPds } from "./gallery/sync.ts";
 import { generateWithoutAi } from "./generation/rules.ts";
-import { startConsumer } from "./jetstream/consumer.ts";
 import { createJobRepository } from "./jobs/repository.ts";
-import { SessionExpiredError, startWorker } from "./jobs/worker.ts";
+import { SessionExpiredError } from "./jobs/worker.ts";
+import { startCron } from "./cron.ts";
 import { createUserRepository } from "./users.ts";
 import { createChromiumValidator } from "./validation/chromium.ts";
 
@@ -30,6 +30,8 @@ const DATA_DIR = path.dirname(env.DB_PATH ?? "data/art-sky.sqlite");
 const DB_PATH = env.DB_PATH ?? "data/art-sky.sqlite";
 const TZ_NAME = env.TZ_NAME ?? "Asia/Tokyo";
 const JETSTREAM_URL = env.JETSTREAM_URL || undefined;
+/** 定期実行の間隔（Cloudflare Workers の Cron と同じ 1 分）。 */
+const CRON_INTERVAL_MS = Number(env.CRON_INTERVAL_MS) || 60_000;
 /** off にすると、生成したコードを Chromium で確かめずに保存する（Chromium を入れられない環境用）。 */
 const VALIDATE = env.VALIDATE !== "off";
 const FRONTEND_DIST = path.resolve(
@@ -85,18 +87,6 @@ async function getUserAgent(did: string): Promise<Agent> {
 const kvGet = db.prepare("SELECT value FROM kv WHERE key = ?");
 const kvSet = db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value");
 
-const consumer = startConsumer(
-  { users, jobs, gallery },
-  {
-    ...(JETSTREAM_URL ? { url: JETSTREAM_URL } : {}),
-    loadCursor() {
-      const row = kvGet.get("jetstream_cursor") as { value: string } | undefined;
-      return row ? Number(row.value) : undefined;
-    },
-    saveCursor: (cursor) => void kvSet.run("jetstream_cursor", String(cursor)),
-  },
-);
-
 const app = createApp({
   users,
   jobs,
@@ -112,7 +102,7 @@ const app = createApp({
     const count = await syncArtworksFromPds(await getUserAgent(did), did, gallery);
     if (count > 0) console.log(`[gallery] ${did} の作品 ${count} 件を PDS から読み直しました`);
   },
-  onRegistered: () => consumer.refresh(),
+  onJobQueued: () => cron.kick(),
   cookieSecret: COOKIE_SECRET,
   secureCookie: PUBLIC_URL?.startsWith("https://") ?? false,
   frontendUrl: FRONTEND_URL,
@@ -127,18 +117,36 @@ if (serveFrontend) {
 
 const validator = VALIDATE ? createChromiumValidator() : null;
 
-const worker = startWorker({
-  jobs,
-  publicAgent,
-  getUserAgent,
-  // AI を使わず、投稿から推定したパラメーターと共通の描画モジュールで作品を作る
-  generate: async (input) => generateWithoutAi(input),
-  validate: async (record) => {
-    await validator?.validate(record);
+const reset = jobs.resetInterrupted();
+if (reset > 0) console.log(`[worker] 中断していたジョブ ${reset} 件をやり直します`);
+
+const cron = startCron(
+  {
+    consumer: { users, jobs, gallery },
+    pull: {
+      ...(JETSTREAM_URL ? { url: JETSTREAM_URL } : {}),
+      loadCursor() {
+        const row = kvGet.get("jetstream_cursor") as { value: string } | undefined;
+        return row ? Number(row.value) : undefined;
+      },
+      saveCursor: (cursor) => void kvSet.run("jetstream_cursor", String(cursor)),
+      feedAgent: publicAgent,
+    },
+    runner: {
+      jobs,
+      publicAgent,
+      getUserAgent,
+      // AI を使わず、投稿から推定したパラメーターと共通の描画モジュールで作品を作る
+      generate: async (input) => generateWithoutAi(input),
+      validate: async (record) => {
+        await validator?.validate(record);
+      },
+      onSaved: (artwork) => void gallery.upsert(artwork),
+      timeZone: TZ_NAME,
+    },
   },
-  onSaved: (artwork) => void gallery.upsert(artwork),
-  timeZone: TZ_NAME,
-});
+  { intervalMs: CRON_INTERVAL_MS },
+);
 
 const server = serve({ fetch: app.fetch, port: PORT, hostname: PUBLIC_URL ? "0.0.0.0" : "127.0.0.1" }, () => {
   console.log(`backend: ${PUBLIC_URL ?? `http://127.0.0.1:${PORT}`}`);
@@ -149,8 +157,7 @@ const server = serve({ fetch: app.fetch, port: PORT, hostname: PUBLIC_URL ? "0.0
 });
 
 async function shutdown() {
-  consumer.stop();
-  await worker.stop();
+  await cron.stop();
   await validator?.close();
   server.close();
   db.close();

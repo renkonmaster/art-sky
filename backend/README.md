@@ -14,9 +14,9 @@
         → 本人の PDS に com.example.artsky.artwork を保存（genesis）→ ギャラリーの索引に入れる
 
 投稿時  ：登録済みの人が Bluesky に投稿する（このサイトに投稿機能はない）
-        → Jetstream でその投稿を見つけ、ジョブを作る（jetstream/consumer.ts）
+        → 1 分ごとの定期実行で Jetstream から前回の続きを読み、その投稿のジョブを作る（cron.ts、jetstream/consumer.ts）
         → 今回の投稿 1 件と前作品（code・params・state）から次の作品を生成（evolution）
-        → 検証 → PDS に保存（レコードキーは元の投稿と同じ）→ 索引に入れる
+        → 検証 → PDS の作品（レコードキー self）を上書き → 索引に入れる
 ```
 
 推定結果（`state.analysis`）と投稿の特徴（`state.features`）は作品レコードに入れて引き継ぐ。
@@ -26,11 +26,12 @@ PDS のレコードは公開されるので、推定結果も公開される（�
 
 | パス | 役割 |
 |---|---|
-| `src/server.ts` | 起動。API、ワーカー、投稿の監視を 1 つのプロセスで動かす。ビルドした画面があれば配る |
+| `src/server.ts` | 起動。API と定期実行を 1 つのプロセスで動かす。ビルドした画面があれば配る |
+| `src/cron.ts` | 定期実行 1 回分：止まったジョブのやり直し → 投稿の取り込み → ジョブの処理（件数と時間に上限） |
 | `src/api/app.ts` | `/oauth/*`、`/api/*`、`/xrpc/*`（[docs/api.md](../docs/api.md)）。形は `@art-sky/api` のスキーマに従う |
 | `src/auth/oauth.ts` | AT Protocol OAuth クライアント。求める権限は作品レコードの読み書きだけ |
-| `src/jetstream/consumer.ts` | Bluesky の投稿と作品レコードの変更を Jetstream で受け取る |
-| `src/jobs/` | 生成ジョブの状態管理、実行、ワーカー |
+| `src/jetstream/consumer.ts` | Jetstream に短くつなぎ、前回の続きから今までの投稿と作品レコードの変更を受け取る（pullOnce） |
+| `src/jobs/` | 生成ジョブの状態管理と実行 |
 | `src/generation/` | 投稿からの推定（rules.ts、`@art-sky/art` を使う）、レコードの組み立て |
 | `src/validation/chromium.ts` | 生成した `code` を Chromium で実行して確かめる |
 | `src/gallery/` | ギャラリーの索引（PDS の写し）と、PDS からの読み直し |
@@ -53,7 +54,7 @@ PDS のレコードは公開されるので、推定結果も公開される（�
 ```bash
 pnpm install
 pnpm exec playwright install chromium   # 検証用のブラウザ
-pnpm dev                                # http://127.0.0.1:3000 で API、ワーカー、投稿の監視を起動
+pnpm dev                                # http://127.0.0.1:3000 で API と定期実行（1 分ごと）を起動
 pnpm test                               # ネット不要（Chromium の検証テストは、Chromium があれば実行する）
 pnpm typecheck
 pnpm e2e                                # ビルドした画面とつないでブラウザで確かめる（先に直下で pnpm build）

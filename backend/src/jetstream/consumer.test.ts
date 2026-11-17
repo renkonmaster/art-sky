@@ -4,7 +4,7 @@ import { createGalleryIndex, type GalleryIndex } from "../gallery/index.ts";
 import { syncArtworksFromPds } from "../gallery/sync.ts";
 import { createJobRepository, type JobRepository } from "../jobs/repository.ts";
 import { createUserRepository, type UserRepository } from "../users.ts";
-import { handleEvent, type JetstreamEvent, startConsumer } from "./consumer.ts";
+import { type FeedAgent, handleEvent, type JetstreamEvent, type PullOptions, pullOnce } from "./consumer.ts";
 
 const ALICE = "did:plc:alice";
 const CID = "bafyreidfayvfuwqa7qlnopdjiqrxzs6blmoeu4rujcjtnci5beludirz2a";
@@ -135,17 +135,23 @@ describe("作品レコードの索引", () => {
   });
 });
 
-describe("接続", () => {
+describe("Cron ごとの取り込み（pullOnce）", () => {
+  /** 本物の WebSocket の代わり。open は次のタスクで届く。 */
   class FakeSocket extends EventTarget {
     static instances: FakeSocket[] = [];
     closed = false;
     readonly url: string;
-    constructor(url: string) {
+    constructor(url: string, { fail = false } = {}) {
       super();
       this.url = url;
       FakeSocket.instances.push(this);
+      setTimeout(() => {
+        if (fail) this.close();
+        else this.dispatchEvent(new Event("open"));
+      }, 0);
     }
     close() {
+      if (this.closed) return;
       this.closed = true;
       this.dispatchEvent(new Event("close"));
     }
@@ -154,54 +160,113 @@ describe("接続", () => {
     }
   }
 
+  const NOW = Date.now() + 120_000; // 登録より後
+  const NOW_US = NOW * 1000;
+  let saved: number | undefined;
+  const options = (extra: Partial<PullOptions> = {}): PullOptions => ({
+    url: "wss://jetstream.test/subscribe",
+    loadCursor: () => saved,
+    saveCursor: (c) => void (saved = c),
+    createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+    idleMs: 20,
+    maxMs: 1000,
+    now: () => NOW,
+    log: () => {},
+    ...extra,
+  });
+  const event = (rkey: string, time_us: number): JetstreamEvent => ({ ...postEvent(rkey), time_us });
+  /** 接続ができたら fn を呼ぶ */
+  const onConnect = (fn: (socket: FakeSocket) => void) =>
+    setTimeout(() => {
+      const socket = FakeSocket.instances.at(-1)!;
+      socket.addEventListener("open", () => fn(socket));
+    }, 0);
+
   beforeEach(() => {
     FakeSocket.instances = [];
+    saved = undefined;
   });
 
-  it("登録済みの人と 2 つのコレクションに絞って購読し、カーソルを保存して再開する", () => {
-    let saved: number | undefined = 1_700_000_000_000_000;
-    const consumer = startConsumer(
-      { users, jobs, gallery },
-      {
-        url: "wss://jetstream.test/subscribe",
-        loadCursor: () => saved,
-        saveCursor: (c) => void (saved = c),
-        createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
-        log: () => {},
-      },
-    );
-    const socket = FakeSocket.instances[0]!;
-    const params = new URL(socket.url).searchParams;
+  it("登録済みの人と 2 つのコレクションに絞り、カーソルの少し前から読む", async () => {
+    saved = NOW_US - 60_000_000;
+    await pullOnce({ users, jobs, gallery }, options());
+    const params = new URL(FakeSocket.instances[0]!.url).searchParams;
     expect(params.getAll("wantedCollections")).toEqual(["app.bsky.feed.post", "com.example.artsky.artwork"]);
     expect(params.getAll("wantedDids")).toEqual([ALICE]);
-    expect(params.get("cursor")).toBe(String(1_700_000_000_000_000 - 5_000_000)); // 少し前から再開する
-
-    const event = postEvent("3post1");
-    socket.receive(event);
-    expect(jobs.listByDid(ALICE)).toHaveLength(1);
-
-    // 登録者が増えたら、その人も含めて接続し直す。
-    users.touch("did:plc:bob", { handle: "bob.test" });
-    users.consent("did:plc:bob");
-    consumer.refresh();
-    expect(socket.closed).toBe(true);
-    expect(new URL(FakeSocket.instances[1]!.url).searchParams.getAll("wantedDids")).toEqual([ALICE, "did:plc:bob"]);
-
-    consumer.stop();
-    expect(saved).toBe(event.time_us);
-    expect(FakeSocket.instances).toHaveLength(2); // 止めたあとは接続し直さない
+    expect(params.get("cursor")).toBe(String(NOW_US - 60_000_000 - 5_000_000));
   });
 
-  it("登録者がいなければ接続しない", () => {
+  it("届いた投稿からジョブを作り、接続した時刻に追いついたら切断してカーソルを保存する", async () => {
+    saved = NOW_US - 60_000_000;
+    onConnect((socket) => {
+      socket.receive(event("3a", NOW_US - 30_000_000));
+      socket.receive(event("3b", NOW_US + 1));
+      socket.receive(event("3c", NOW_US + 2)); // 切断後は処理しない
+    });
+    const result = await pullOnce({ users, jobs, gallery }, options());
+    expect(result).toMatchObject({ outcome: "pulled", events: 2, jobs: 2 });
+    expect(jobs.listByDid(ALICE).map((j) => j.rkey).sort()).toEqual(["3a", "3b"]);
+    expect(FakeSocket.instances[0]!.closed).toBe(true);
+    expect(saved).toBe(NOW_US + 1);
+  });
+
+  it("何も届かなければ、しばらくして切断し、カーソルを今に近づける", async () => {
+    saved = NOW_US - 3600_000_000;
+    const result = await pullOnce({ users, jobs, gallery }, options());
+    expect(result).toMatchObject({ outcome: "pulled", events: 0 });
+    expect(saved).toBe(NOW_US - 5_000_000);
+  });
+
+  it("上限時間で打ち切ったときは、処理したところまでしかカーソルを進めない", async () => {
+    saved = NOW_US - 3600_000_000;
+    onConnect((socket) => {
+      socket.receive(event("3a", NOW_US - 1800_000_000));
+      // idleMs より短い間隔で届き続ける
+      const timer = setInterval(() => socket.receive({ did: ALICE, time_us: NOW_US - 1700_000_000, kind: "identity" }), 5);
+      socket.addEventListener("close", () => clearInterval(timer));
+    });
+    await pullOnce({ users, jobs, gallery }, options({ maxMs: 60 }));
+    expect(saved).toBe(NOW_US - 1700_000_000);
+  });
+
+  it("接続できなければカーソルを変えない", async () => {
+    saved = NOW_US - 60_000_000;
+    const result = await pullOnce(
+      { users, jobs, gallery },
+      options({ createSocket: (url) => new FakeSocket(url, { fail: true }) as unknown as WebSocket }),
+    );
+    expect(result.outcome).toBe("failed");
+    expect(saved).toBe(NOW_US - 60_000_000);
+  });
+
+  it("登録者がいなければ接続しない", async () => {
     const db = openDatabase(":memory:");
     const empty = { users: createUserRepository(db), jobs: createJobRepository(db), gallery: createGalleryIndex(db) };
-    const consumer = startConsumer(empty, {
-      loadCursor: () => undefined,
-      saveCursor: () => {},
-      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
-      log: () => {},
-    });
+    const result = await pullOnce(empty, options());
+    expect(result.outcome).toBe("no-users");
     expect(FakeSocket.instances).toHaveLength(0);
-    consumer.stop();
+  });
+
+  it("カーソルが古すぎれば、各人の直近の投稿を取り直し、今から読み始める", async () => {
+    saved = NOW_US - 48 * 3600_000_000;
+    const iso = (us: number) => new Date(us / 1000).toISOString();
+    const feedAgent: FeedAgent = {
+      async getAuthorFeed() {
+        return {
+          data: {
+            feed: [
+              { post: { uri: `at://${ALICE}/app.bsky.feed.post/3new`, cid: CID, author: { did: ALICE }, record: { text: "新しい", createdAt: iso(NOW_US - 60_000_000) } } },
+              { post: { uri: `at://${ALICE}/app.bsky.feed.post/3old`, cid: CID, author: { did: ALICE }, record: { text: "古い", createdAt: iso(NOW_US - 72 * 3600_000_000) } } },
+              { post: { uri: "at://did:plc:x/app.bsky.feed.post/3rp", cid: CID, author: { did: "did:plc:x" }, record: { text: "リポスト", createdAt: iso(NOW_US) } }, reason: {} },
+            ],
+          },
+        };
+      },
+    };
+    const result = await pullOnce({ users, jobs, gallery }, options({ feedAgent }));
+    expect(result).toMatchObject({ backfilled: 1, jobs: 1 });
+    expect(jobs.listByDid(ALICE).map((j) => j.rkey)).toEqual(["3new"]);
+    expect(new URL(FakeSocket.instances[0]!.url).searchParams.has("cursor")).toBe(false);
+    expect(saved).toBe(NOW_US - 5_000_000);
   });
 });

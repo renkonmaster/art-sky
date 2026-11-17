@@ -45,8 +45,8 @@ export interface AppDeps {
   newTid(): string;
   /** ログインした直後に呼ぶ。その人の作品を PDS から読み直して索引に入れる、などに使う。失敗しても無視する。 */
   onLogin?(did: string): Promise<void>;
-  /** 登録者が増えたときに呼ぶ。投稿の監視の対象に加える。 */
-  onRegistered?(did: string): void;
+  /** 生成ジョブを作った・やり直すときに呼ぶ（登録、再試行）。次の定期実行を待たずに処理するのに使う。 */
+  onJobQueued?(): void;
   cookieSecret: string;
   secureCookie: boolean;
   /** ログイン後に戻す先（フロントエンドのオリジン）。 */
@@ -205,7 +205,7 @@ export function createApp(deps: AppDeps) {
     if (user.consentedAt !== null) throw new ApiError("AlreadyRegistered", "初回登録は済んでいます");
     const registered = deps.users.consent(user.did);
     const job = deps.jobs.enqueueGenesis(user.did, deps.newTid());
-    deps.onRegistered?.(user.did);
+    deps.onJobQueued?.();
     return c.json({ me: meJson(registered), job: jobJson(job) }, 202);
   });
 
@@ -233,6 +233,7 @@ export function createApp(deps: AppDeps) {
   api.post("/jobs/:id/retry", (c) => {
     const job = ownJob(c);
     if (!deps.jobs.retry(job.id)) throw new ApiError("JobNotRetryable", "失敗したジョブだけ再試行できます");
+    deps.onJobQueued?.();
     return c.json({ job: jobJson(deps.jobs.get(job.id)!) }, 202);
   });
 

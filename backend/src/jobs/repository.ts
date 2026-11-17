@@ -105,6 +105,7 @@ export function createJobRepository(db: Database) {
   const fail = db.prepare("UPDATE jobs SET status = 'failed', error = ?, error_code = ?, updated_at = ? WHERE id = ?");
   const retry = db.prepare("UPDATE jobs SET status = 'queued', error = NULL, error_code = NULL, updated_at = ? WHERE id = ? AND status = 'failed'");
   const resetActive = db.prepare(`UPDATE jobs SET status = 'queued', updated_at = ? WHERE status IN ${ACTIVE}`);
+  const resetStale = db.prepare(`UPDATE jobs SET status = 'queued', updated_at = ? WHERE status IN ${ACTIVE} AND updated_at < ?`);
 
   function enqueue(
     did: string,
@@ -158,6 +159,10 @@ export function createJobRepository(db: Database) {
     /** 起動時に呼ぶ。前回の停止で処理中のまま残ったジョブをやり直す。 */
     resetInterrupted(): number {
       return Number(resetActive.run(nowIso()).changes);
+    },
+    /** 処理中のまま olderThanMs 以上たったジョブ（実行が途中で打ち切られたもの）をやり直す。 */
+    resetStale(olderThanMs: number): number {
+      return Number(resetStale.run(nowIso(), new Date(Date.now() - olderThanMs).toISOString()).changes);
     },
   };
 }

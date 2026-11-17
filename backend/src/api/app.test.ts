@@ -22,7 +22,7 @@ let app: ReturnType<typeof createApp>;
 let cookie: string;
 let loginAs: string;
 let authorizeArgs: unknown[];
-let registered: string[];
+let kicks: number;
 let loggedIn: string[];
 
 const record = (title: string, createdAt: string) => ({
@@ -46,7 +46,7 @@ beforeEach(async () => {
   gallery = createGalleryIndex(db);
   loginAs = ALICE;
   authorizeArgs = [];
-  registered = [];
+  kicks = 0;
   loggedIn = [];
   let tid = 0;
   const deps: AppDeps = {
@@ -70,7 +70,7 @@ beforeEach(async () => {
       did === ALICE ? { handle: "alice.test", displayName: "Alice", avatar: "https://cdn.example/alice.jpg" } : { handle: "bob.test" },
     newTid: () => `3tid${++tid}`,
     onLogin: async (did) => void loggedIn.push(did),
-    onRegistered: (did) => void registered.push(did),
+    onJobQueued: () => void kicks++,
     cookieSecret: SECRET,
     secureCookie: false,
     frontendUrl: "http://127.0.0.1:5173",
@@ -162,7 +162,7 @@ describe("内部 API", () => {
     const body = routes.register.response.parse(await res.json());
     expect(body.me).toMatchObject({ registered: true, settings: { generationEnabled: true, listed: true } });
     expect(body.job).toMatchObject({ kind: "genesis", status: "queued", attempts: 0 });
-    expect(registered).toEqual([ALICE]);
+    expect(kicks).toBe(1); // 次の定期実行を待たずに生成を始める
 
     await expectError(await post("/api/register", CONSENT), 409, "AlreadyRegistered");
     expect(jobs.listByDid(ALICE)).toHaveLength(1);
@@ -192,9 +192,11 @@ describe("内部 API", () => {
     const failed = routes.getJob.response.parse(await (await call(`/api/jobs/${job.id}`)).json()).job;
     expect(failed).toMatchObject({ status: "failed", error: { code: "validation_failed", retryable: true }, attempts: 1 });
 
+    const kicksBefore = kicks;
     const retried = await post(`/api/jobs/${job.id}/retry`);
     expect(retried.status).toBe(routes.retryJob.status);
     expect(routes.retryJob.response.parse(await retried.json()).job.status).toBe("queued");
+    expect(kicks).toBe(kicksBefore + 1);
 
     jobs.claimNext();
     jobs.complete(Number(job.id), { uri: `at://${ALICE}/com.example.artsky.artwork/3tid1`, cid: CID });

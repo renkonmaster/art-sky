@@ -70,7 +70,7 @@ frontend/              画面。開発時はモックでバックエンドなし
 | ログイン | `@atproto/oauth-client-node` | AT Protocol 公式の OAuth クライアント |
 | Bluesky API | `@atproto/api` | 投稿とプロフィールの取得、レコード書き込み |
 | DB | SQLite（Node.js 標準の `node:sqlite`） | 初期版は 1 台で足りる。ネイティブモジュールのビルドが要らない。表が少ないので ORM は使わず SQL を直接書く |
-| ジョブ | SQLite のジョブテーブルをワーカーが取得 | Redis などを増やさずに済む |
+| ジョブ | SQLite のジョブテーブルを定期実行（1 分ごと）で処理 | Redis などを増やさずに済む。Cloudflare Workers の Cron でも同じ形で動く |
 | 作品の生成 | 規則による推定（`@art-sky/art`） | 外部 API に投稿を送らず、費用もかからない。同じ入力からは同じ作品になる |
 | 生成結果の検証 | Playwright + ヘッドレス Chromium | ギャラリーと同じブラウザ・同じ renderer で実行できる |
 
@@ -86,9 +86,11 @@ OAuth のスコープは必要な操作だけに絞る。
 
 このサイトからは投稿しない。登録済みの人が Bluesky に投稿したら、それをきっかけに作品を作る。
 
-- Jetstream を `app.bsky.feed.post` と登録済みの DID で絞って購読し、新しい投稿ごとに evolution ジョブを作る。
+- 接続はつなぎっぱなしにしない。1 分ごとの定期実行で Jetstream に短くつなぎ、前回のカーソルの続きから今までの分を受け取って切断する（`backend/src/jetstream/consumer.ts` の `pullOnce`）。
+- 購読は `app.bsky.feed.post` と作品のコレクション、登録済みの DID で絞り、新しい投稿ごとに evolution ジョブを作る。
 - 返信・引用・リポストは対象外にする。
-- カーソルを DB に保存し、停止していた間の投稿も再開時に拾う。
+- カーソルを DB に保存する。Jetstream がさかのぼれるのはおよそ 1 日分なので、カーソルが 20 時間より古ければ、各人の直近の投稿を公開 AppView から取り直す。
+- ジョブは 1 回の定期実行で件数と時間に上限を決めて処理し、残りは次回に回す。登録と再試行の直後は、定期実行を待たずに処理する。
 
 ### ジョブ
 
@@ -122,7 +124,7 @@ OAuth のスコープは必要な操作だけに絞る。
 | DB | SQLite（`node:sqlite`） | generator とは別のファイルにする |
 | DID の解決 | `@atproto/identity` | DID からハンドル名と PDS を調べる |
 
-- Jetstream のカーソルを DB に保存し、再起動しても続きから受け取る。
+- Jetstream のカーソルを DB に保存し、次の定期実行で続きから受け取る。
 - 受け取ったレコードは `packages/lexicon` で検証し、不正なものは索引に入れない。
 - 索引が壊れたときは、参加者の PDS から `com.atproto.repo.listRecords` で作り直す。
 

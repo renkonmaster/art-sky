@@ -4,6 +4,9 @@
  *   - 作品レコードの作成・削除 → ギャラリーの索引を更新する
  * を行う（docs/tech-stack.md「投稿の監視」）。
  *
+ * 接続はつなぎっぱなしにしない。定期実行（Cron）のたびに pullOnce で
+ * 前回の続きから今までの分を受け取り、追いついたら切断する（Cloudflare Workers でも動く形）。
+ *
  * このサイトに投稿機能はない。利用者は Bluesky でふつうに投稿し、ここでそれを見つける。
  */
 import type { GalleryIndex } from "../gallery/index.ts";
@@ -73,110 +76,206 @@ export function handleEvent(deps: ConsumerDeps, event: JetstreamEvent): "job" | 
   return "ignored";
 }
 
-export interface ConsumerOptions {
+export interface PullOptions {
   /** Jetstream のエンドポイント。 */
   url?: string;
-  /** カーソル（最後に処理したイベントの時刻）の読み書き。 */
+  /** カーソル（最後に処理したイベントの時刻、マイクロ秒）の読み書き。 */
   loadCursor(): number | undefined;
   saveCursor(cursor: number): void;
   /** 接続を作る。テストで差し替えられるようにしている。 */
   createSocket?: (url: string) => WebSocket;
+  /** カーソルが古すぎて続きを読めないときに、投稿を取り直すのに使う（公開 AppView）。 */
+  feedAgent?: FeedAgent;
+  /** 何も届かない時間がこれだけ続いたら、追いついたとみなして切断する。 */
+  idleMs?: number;
+  /** 1 回の接続の上限時間。 */
+  maxMs?: number;
+  now?: () => number;
   log?: (message: string) => void;
 }
+
+export interface PullResult {
+  /** 何をしたか。 */
+  outcome: "pulled" | "no-users" | "failed";
+  /** 受け取ったイベントの数と、作ったジョブの数。 */
+  events: number;
+  jobs: number;
+  /** カーソルが古すぎたので、投稿を取り直した人数。 */
+  backfilled: number;
+}
+
+/** 投稿の取り直しに使う部分だけ（AtpAgent の getAuthorFeed）。 */
+export type FeedAgent = {
+  getAuthorFeed(params: { actor: string; limit: number; filter: "posts_no_replies" }): Promise<{
+    data: { feed: { post: { uri: string; cid: string; author: { did: string }; record: unknown }; reason?: unknown }[] };
+  }>;
+};
 
 const DEFAULT_URL = "wss://jetstream2.us-east.bsky.network/subscribe";
 /** 一度に購読できる DID の上限（Jetstream の仕様）。 */
 const MAX_WANTED_DIDS = 10_000;
+/** 取りこぼしを避けるため、最後に処理した時刻のこれだけ前から読み直す。 */
+const REWIND_US = 5_000_000;
+/** Jetstream がさかのぼれるのはおよそ 1 日分。これより古いカーソルは続きを読めないものとして扱う。 */
+const MAX_CURSOR_AGE_US = 20 * 3600 * 1_000_000;
+/** 取り直すときに見る、1 人あたりの直近の投稿数。 */
+const BACKFILL_POSTS = 5;
 
 /**
- * Jetstream への接続を保ち、イベントを handleEvent に渡す。
+ * Jetstream に 1 回だけつなぎ、前回の続きから今までのイベントを handleEvent に渡して切断する。
  *
- * - 購読は登録済みの DID に絞る。登録者が増えたら refresh() で接続し直す。
- * - 切れたら間隔を空けて接続し直し、保存したカーソルの少し前から再開するので、
- *   止まっていた間の投稿も拾える（重複して届いても handleEvent は同じ結果になる）。
+ * - 購読は登録済みの DID と、投稿・作品の 2 つのコレクションに絞る。
+ * - 次のどれかで切断し、最後に処理した位置をカーソルとして保存する。
+ *     1. 接続した時刻のイベントまで追いついた
+ *     2. idleMs のあいだ何も届かない（新しいイベントがない）
+ *     3. maxMs を過ぎた（残りは次回）
+ * - 同じイベントが二度届いても handleEvent は同じ結果になるので、少し前から読み直してよい。
+ * - カーソルが古すぎる（止まっていた）ときは、各人の直近の投稿を公開 AppView から取り直し、
+ *   今の時刻から読み始める。
  */
-export function startConsumer(deps: ConsumerDeps, options: ConsumerOptions): { refresh(): void; stop(): void } {
+export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promise<PullResult> {
   const log = options.log ?? ((m: string) => console.log(`[jetstream] ${m}`));
+  const now = options.now ?? Date.now;
   const createSocket = options.createSocket ?? ((url: string) => new WebSocket(url));
-  let socket: WebSocket | null = null;
-  let stopped = false;
-  let retryTimer: NodeJS.Timeout | undefined;
-  let saveTimer: NodeJS.Timeout | undefined;
-  let backoffMs = 1000;
+  const idleMs = options.idleMs ?? 2000;
+  const maxMs = options.maxMs ?? 20_000;
+  const result: PullResult = { outcome: "pulled", events: 0, jobs: 0, backfilled: 0 };
+
+  const dids = deps.users.listRegistered().map((u) => u.did);
+  if (dids.length === 0) return { ...result, outcome: "no-users" };
+  if (dids.length > MAX_WANTED_DIDS) log(`登録者が ${MAX_WANTED_DIDS} 人を超えています。超えた分の投稿は拾えません`);
+
+  const startedUs = now() * 1000;
   let cursor = options.loadCursor();
-  let subscribed = "";
+  if (cursor !== undefined && startedUs - cursor > MAX_CURSOR_AGE_US) {
+    log(`カーソルが古すぎるので（${new Date(cursor / 1000).toISOString()}）、直近の投稿を取り直します`);
+    if (options.feedAgent) result.backfilled = await backfill(deps, options.feedAgent, dids, cursor, log, result);
+    cursor = undefined;
+  }
 
-  const flush = () => {
-    if (cursor !== undefined) options.saveCursor(cursor);
-  };
+  const params = new URLSearchParams();
+  params.append("wantedCollections", POST_COLLECTION);
+  params.append("wantedCollections", ARTWORK_COLLECTION);
+  for (const did of dids.slice(0, MAX_WANTED_DIDS)) params.append("wantedDids", did);
+  if (cursor !== undefined) params.set("cursor", String(cursor - REWIND_US));
 
-  function connect() {
-    if (stopped) return;
-    const dids = deps.users.listRegistered().map((u) => u.did);
-    subscribed = dids.join(",");
-    if (dids.length === 0) return; // 登録者がいない間はつながない（refresh で始める）
-    if (dids.length > MAX_WANTED_DIDS) log(`登録者が ${MAX_WANTED_DIDS} 人を超えています。超えた分の投稿は拾えません`);
+  let last = cursor;
+  let opened = false;
+  /** 今までの分を受け取り終えたか（何も届かなくなった、または接続した時刻に追いついた）。 */
+  let caughtUp = false;
+  await new Promise<void>((resolve) => {
+    let ws: WebSocket;
+    try {
+      ws = createSocket(`${options.url ?? DEFAULT_URL}?${params}`);
+    } catch (err) {
+      log(`接続できませんでした: ${(err as Error).message}`);
+      result.outcome = "failed";
+      resolve();
+      return;
+    }
+    let idle: ReturnType<typeof setTimeout> | undefined;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(idle);
+      clearTimeout(limit);
+      try {
+        ws.close();
+      } catch {
+        // すでに閉じている
+      }
+      resolve();
+    };
+    const limit = setTimeout(() => {
+      log(`上限の ${maxMs / 1000} 秒に達したので、残りは次回にします`);
+      finish();
+    }, maxMs);
+    const resetIdle = () => {
+      clearTimeout(idle);
+      idle = setTimeout(() => {
+        caughtUp = true;
+        finish();
+      }, idleMs);
+    };
 
-    const params = new URLSearchParams();
-    params.append("wantedCollections", POST_COLLECTION);
-    params.append("wantedCollections", ARTWORK_COLLECTION);
-    for (const did of dids.slice(0, MAX_WANTED_DIDS)) params.append("wantedDids", did);
-    // 取りこぼしを避けるため、最後に処理した時刻の 5 秒前から再開する。
-    if (cursor !== undefined) params.set("cursor", String(cursor - 5_000_000));
-
-    const ws = createSocket(`${options.url ?? DEFAULT_URL}?${params}`);
-    socket = ws;
     ws.addEventListener("open", () => {
-      backoffMs = 1000;
-      log(`接続しました（${dids.length} 人を監視）`);
+      opened = true;
+      resetIdle();
     });
     ws.addEventListener("message", (message) => {
+      if (done) return;
+      resetIdle();
       try {
         const event = JSON.parse(String(message.data)) as JetstreamEvent;
         if (typeof event.time_us !== "number") return;
-        const result = handleEvent(deps, event);
-        if (result !== "ignored") log(`${event.did} ${event.commit?.collection}/${event.commit?.rkey}: ${result}`);
-        cursor = event.time_us;
+        const handled = handleEvent(deps, event);
+        result.events++;
+        if (handled === "job") result.jobs++;
+        if (handled !== "ignored") log(`${event.did} ${event.commit?.collection}/${event.commit?.rkey}: ${handled}`);
+        last = event.time_us;
+        if (event.time_us >= startedUs) {
+          caughtUp = true; // 接続した時刻まで追いついた
+          finish();
+        }
       } catch (err) {
         log(`イベントを処理できませんでした: ${(err as Error).message}`);
       }
     });
     ws.addEventListener("close", () => {
-      if (socket !== ws) return; // refresh で自分から閉じた
-      socket = null;
-      if (stopped) return;
-      log(`切断されました。${Math.round(backoffMs / 1000)} 秒後に接続し直します`);
-      retryTimer = setTimeout(connect, backoffMs);
-      backoffMs = Math.min(backoffMs * 2, 60_000);
+      if (!opened && !done) {
+        log("接続できませんでした");
+        result.outcome = "failed";
+      }
+      finish();
     });
     ws.addEventListener("error", () => {
-      // close も続けて届くので、接続し直しはそちらで行う。
+      // close も続けて届くので、そちらで終える。
     });
+  });
+
+  // 追いついたなら、接続した時刻までは受け取り済み。イベントがなくてもカーソルを進め、
+  // 次回に古いところから読み直さないようにする（読み直しの分だけ手前にしておく）。
+  if (caughtUp) last = Math.max(last ?? 0, startedUs - REWIND_US);
+  if (last !== undefined && last !== cursor) options.saveCursor(last);
+  return result;
+}
+
+/** 各人の直近の投稿を、Jetstream のイベントと同じ形にして handleEvent に渡す。取り直せた人数を返す。 */
+async function backfill(
+  deps: ConsumerDeps,
+  agent: FeedAgent,
+  dids: string[],
+  sinceUs: number,
+  log: (m: string) => void,
+  result: PullResult,
+): Promise<number> {
+  let count = 0;
+  for (const did of dids) {
+    try {
+      const { data } = await agent.getAuthorFeed({ actor: did, limit: BACKFILL_POSTS, filter: "posts_no_replies" });
+      const posts = data.feed
+        .filter((item) => !item.reason && item.post.author.did === did)
+        .map((item) => {
+          const createdAt = Date.parse((item.post.record as { createdAt?: string }).createdAt ?? "");
+          const rkey = item.post.uri.slice(item.post.uri.lastIndexOf("/") + 1);
+          return { createdAt, rkey, cid: item.post.cid, record: item.post.record };
+        })
+        .filter((p) => Number.isFinite(p.createdAt) && p.createdAt * 1000 > sinceUs)
+        .sort((a, b) => a.createdAt - b.createdAt);
+      for (const p of posts) {
+        const handled = handleEvent(deps, {
+          did,
+          time_us: p.createdAt * 1000,
+          kind: "commit",
+          commit: { operation: "create", collection: POST_COLLECTION, rkey: p.rkey, cid: p.cid, record: p.record },
+        });
+        if (handled === "job") result.jobs++;
+      }
+      count++;
+    } catch (err) {
+      log(`${did} の投稿を取り直せませんでした: ${(err as Error).message}`);
+    }
   }
-
-  connect();
-  saveTimer = setInterval(flush, 5000);
-
-  return {
-    /** 登録者が変わったときに呼ぶ。監視する人が変わっていれば接続し直す。 */
-    refresh() {
-      if (stopped) return;
-      const next = deps.users.listRegistered().map((u) => u.did).join(",");
-      if (next === subscribed && socket) return;
-      clearTimeout(retryTimer);
-      const old = socket;
-      socket = null;
-      old?.close();
-      connect();
-    },
-    stop() {
-      stopped = true;
-      clearTimeout(retryTimer);
-      clearInterval(saveTimer);
-      flush();
-      const old = socket;
-      socket = null;
-      old?.close();
-    },
-  };
+  return count;
 }
