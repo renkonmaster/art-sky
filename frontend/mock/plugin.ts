@@ -46,6 +46,7 @@ export function mockApi(options: { delayMs?: number } = {}): Plugin {
           });
           res.statusCode = out.status;
           for (const [name, value] of Object.entries(out.headers ?? {})) res.setHeader(name, value);
+          if (out.raw) return res.end(out.raw);
           if (out.body === undefined) return res.end();
           res.setHeader("content-type", "application/json; charset=utf-8");
           res.end(JSON.stringify(out.body));

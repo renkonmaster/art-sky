@@ -2,7 +2,7 @@
  * バックエンドの HTTP API（docs/api.md）。
  *
  * - 認証（画面遷移）：/oauth/login、/oauth/callback、/oauth/logout
- * - 内部 API（セッション Cookie）：/api/me、/api/register、/api/jobs、/api/settings
+ * - 内部 API（セッション Cookie）：/api/me、/api/register、/api/jobs、/api/settings、/api/avatar
  * - ギャラリー API（ログイン不要、XRPC）：/xrpc/com.example.artsky.gallery.*
  *
  * リクエストとレスポンスの形は @art-sky/api のスキーマで決まっていて、フロントエンドも同じものを使う。
@@ -32,6 +32,18 @@ import type { Job, JobRepository } from "../jobs/repository.ts";
 import type { ProfileInfo, User, UserRepository } from "../users.ts";
 
 const COOKIE = "artsky_sid";
+/** アバターを中継する上限（Bluesky のアバターは 1MB 以下）。 */
+const AVATAR_MAX_BYTES = 2_000_000;
+
+/** Bluesky の画像配信のアバターだけを中継する（任意の URL を取りに行く口にしない）。 */
+function isBlueskyAvatarUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "cdn.bsky.app" && url.pathname.startsWith("/img/avatar/");
+  } catch {
+    return false;
+  }
+}
 const MAX_AGE = 60 * 60 * 24 * 30; // 30 日
 
 export interface AppDeps {
@@ -47,6 +59,8 @@ export interface AppDeps {
   onLogin?(did: string): Promise<void>;
   /** 生成ジョブを作った・やり直すときに呼ぶ（登録、再試行）。次の定期実行を待たずに処理するのに使う。 */
   onJobQueued?(): void;
+  /** アバター画像を取りに行く（テストで差し替える）。省略すると fetch。 */
+  fetchImage?(url: string): Promise<Response>;
   cookieSecret: string;
   secureCookie: boolean;
   /** ログイン後に戻す先（フロントエンドのオリジン）。 */
@@ -254,6 +268,21 @@ export function createApp(deps: AppDeps) {
       listed: patch.listed ?? user.listed,
     });
     return c.json({ settings: { generationEnabled: next.generationEnabled, listed: next.listed } });
+  });
+
+  // ログインしている本人の Bluesky のアバター画像を中継する。
+  // cdn.bsky.app は CORS のヘッダーを返さないので、名刺のキャンバスに描くには同じオリジンから読む必要がある。
+  api.get("/avatar", async (c) => {
+    const user = c.get("user");
+    const profile = await deps.resolveProfile(user.did).catch(() => undefined);
+    const url = profile ? profile.avatar : user.avatar;
+    if (!url || !isBlueskyAvatarUrl(url)) throw new ApiError("NotFound", "アバター画像がありません");
+    const res = await (deps.fetchImage ?? ((u: string) => fetch(u)))(url).catch(() => undefined);
+    const type = res?.headers.get("content-type") ?? "";
+    if (!res?.ok || !type.startsWith("image/")) throw new ApiError("NotFound", "アバター画像を読めませんでした");
+    const body = await res.arrayBuffer();
+    if (body.byteLength > AVATAR_MAX_BYTES) throw new ApiError("NotFound", "アバター画像が大きすぎます");
+    return c.body(body, 200, { "content-type": type, "cache-control": "private, max-age=600" });
   });
 
   app.route("/api", api);

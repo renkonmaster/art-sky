@@ -359,7 +359,7 @@ export function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
-/** アバター画像を読み込む。読めなければ null（CORS で読めない画像は名刺に混ぜられない）。 */
+/** アバター画像を読み込む（同じオリジンの /api/avatar から）。読めなければ null。 */
 export async function loadAvatar(url: string | undefined): Promise<ImageBitmap | null> {
   if (!url) return null;
   try {

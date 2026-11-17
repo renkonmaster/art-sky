@@ -69,20 +69,19 @@ function CardEditor({ view }: { view: ArtworkView }) {
     return () => controller.abort();
   }, [view.author.did]);
   const name = profile?.displayName ?? view.author.displayName ?? view.author.handle;
-  const avatarUrl = profile?.avatar ?? view.author.avatar;
 
-  // アバターは読み込めたときだけ使う。undefined は読み込み中。
+  // アバターは読み込めたときだけ使う（読めなければ作品の絵で代える）。undefined は読み込み中。
+  // Bluesky の画像配信は CORS に対応していないので、バックエンドの中継（/api/avatar）から読む。
   const [avatar, setAvatar] = useState<ImageBitmap | null | undefined>(undefined);
   useEffect(() => {
-    if (profile === undefined) return;
     let cancelled = false;
-    void loadAvatar(avatarUrl).then((bitmap) => {
+    void loadAvatar("/api/avatar").then((bitmap) => {
       if (!cancelled) setAvatar(bitmap);
     });
     return () => {
       cancelled = true;
     };
-  }, [avatarUrl, profile]);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;

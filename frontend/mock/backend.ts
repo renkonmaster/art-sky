@@ -17,6 +17,7 @@ import {
   UpdateSettingsRequest,
 } from "@art-sky/api";
 import type { z } from "zod";
+import { mockAvatarPng } from "./avatar.ts";
 import { hash32, isAnimated, SEED_AUTHORS, STYLE_NAMES, type StyleName, styleCode, tidFromTime } from "./data.ts";
 
 /**
@@ -53,6 +54,8 @@ export interface MockRequest {
 export interface MockResponse {
   status: number;
   body?: unknown;
+  /** JSON ではない中身（画像など）。content-type は headers で渡す。 */
+  raw?: Uint8Array;
   headers?: Record<string, string>;
 }
 
@@ -413,6 +416,12 @@ export class MockBackend {
         user.registeredAt = this.now();
         const job = this.createJob(user, "genesis", {});
         return ok({ me: this.me(user), job: this.jobView(job) }, 202);
+      }
+
+      // 本物ではログイン中の人の Bluesky のアバター画像を中継する。モックでは仮の絵を返す。
+      case "GET /api/avatar": {
+        const user = this.requireUser(cookie);
+        return { status: 200, raw: mockAvatarPng(hash32(user.did)), headers: { "content-type": "image/png", "cache-control": "private, max-age=600" } };
       }
 
       // Bluesky の公開 AppView の代わり（名刺で自己紹介を読む）。本物では public.api.bsky.app に問い合わせる。

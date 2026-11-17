@@ -24,6 +24,8 @@ let loginAs: string;
 let authorizeArgs: unknown[];
 let kicks: number;
 let loggedIn: string[];
+let fetchedImages: string[];
+let deps: AppDeps;
 
 const record = (title: string, createdAt: string) => ({
   $type: "com.example.artsky.artwork",
@@ -48,8 +50,9 @@ beforeEach(async () => {
   authorizeArgs = [];
   kicks = 0;
   loggedIn = [];
+  fetchedImages = [];
   let tid = 0;
-  const deps: AppDeps = {
+  deps = {
     users,
     jobs,
     gallery,
@@ -68,6 +71,10 @@ beforeEach(async () => {
     } as unknown as AppDeps["oauth"],
     resolveProfile: async (did) =>
       did === ALICE ? { handle: "alice.test", displayName: "Alice", avatar: "https://cdn.example/alice.jpg" } : { handle: "bob.test" },
+    fetchImage: async (url) => {
+      fetchedImages.push(url);
+      return new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/jpeg" } });
+    },
     newTid: () => `3tid${++tid}`,
     onLogin: async (did) => void loggedIn.push(did),
     onJobQueued: () => void kicks++,
@@ -211,6 +218,26 @@ describe("内部 API", () => {
     await post("/api/register", CONSENT, bob);
     await expectError(await call("/api/jobs/1", {}, bob), 404, "NotFound");
     await expectError(await call("/api/jobs/abc"), 404, "NotFound");
+  });
+
+  it("アバターは本人の Bluesky のアバターだけを中継する", async () => {
+    expect((await call("/api/avatar", {}, null)).status).toBe(401);
+    // Alice のアバターは cdn.bsky.app ではないので、取りに行かない
+    expect((await call("/api/avatar")).status).toBe(404);
+    expect(fetchedImages).toEqual([]);
+
+    deps.resolveProfile = async () => ({ handle: "alice.test", avatar: "https://cdn.bsky.app/img/avatar/plain/did:plc:alice/bafy@jpeg" });
+    app = createApp(deps);
+    const res = await call("/api/avatar");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect(fetchedImages).toEqual(["https://cdn.bsky.app/img/avatar/plain/did:plc:alice/bafy@jpeg"]);
+
+    // アバターのない人は 404
+    deps.resolveProfile = async () => ({ handle: "alice.test" });
+    app = createApp(deps);
+    expect((await call("/api/avatar")).status).toBe(404);
   });
 
   it("設定は PATCH で、送った項目だけ変わる", async () => {
