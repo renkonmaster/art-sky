@@ -225,6 +225,35 @@ const activityOf = (perDay) => Math.round(clamp(Math.log10(1 + perDay) / Math.lo
 const confidenceOf = (evidence) => clamp(evidence / 3, 0, 1);
 
 // -------------------------------------------------------------------
+// 投稿の「跡」：直近の投稿 1 件ずつを、絵に足す要素として小さな整数で残す
+// -------------------------------------------------------------------
+/** 残す投稿の数。 */
+const RECENT_MAX = 30;
+
+function fnv1a(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}
+
+/**
+ * 投稿 1 件 → 整数（24 ビット）。描画モジュール（draw.js の decodeRecent）が読む。
+ *   0〜2 ビット：いちばん強い感情（EMOTIONS の番号。手がかりがなければ neutral）
+ *   3〜4 ビット：感情の確からしさ（0〜3）
+ *   5 ビット   ：「!」を含むか
+ *   6〜7 ビット：長さ（0：〜19 字、1：〜59 字、2：〜139 字、3：それ以上）
+ *   8〜23 ビット：本文と日時のハッシュ（絵の中の位置を決める）
+ */
+function traceOf(post, a) {
+  const emo = a.evidence > 0 ? EMOTIONS.indexOf(EMOTIONS.reduce((x, y) => (a.scores[y] > a.scores[x] ? y : x))) : EMOTIONS.indexOf("neutral");
+  const conf = Math.round(confidenceOf(a.evidence) * 3);
+  const chars = [...normalizeText(post.text)].length;
+  const len = chars < 20 ? 0 : chars < 60 ? 1 : chars < 140 ? 2 : 3;
+  const hash = fnv1a(`${post.text}|${post.createdAt}`) & 0xffff;
+  return emo | (conf << 3) | ((a.exclaim ? 1 : 0) << 5) | (len << 6) | (hash << 8);
+}
+
+// -------------------------------------------------------------------
 // 最初の作品：直近の投稿（新しい順）をまとめる
 // -------------------------------------------------------------------
 /**
@@ -236,10 +265,12 @@ function estimateGenesis(posts, opts = {}) {
   const vec = Object.fromEntries(EMOTIONS.map((e) => [e, 0]));
   const evidenceWords = {};
   const minutes = [];
+  const recent = [];
   let exclaim = 0, emoji = 0, length = 0;
 
   posts.forEach((post, i) => {
     const a = analyzePost(post.text, post.langs);
+    if (i < RECENT_MAX) recent.push(traceOf(post, a));
     // 新しい投稿ほど重く（40 件ごとに半分）、手がかりが多い投稿ほど重く
     const recency = Math.pow(0.5, i / 40);
     const conf = confidenceOf(a.evidence);
@@ -269,8 +300,10 @@ function estimateGenesis(posts, opts = {}) {
     length: n ? Math.round(length / n) : 0,                // 本文の平均の長さ（文字）
     lastPostAt: times.length ? new Date(Math.max(...times)).toISOString() : null,
     posts: 0,                                              // genesis 以降に読んだ投稿の数
+    recent,                                                // 直近の投稿の跡（新しい順、traceOf）
   };
   state.style = chooseStyle(state);
+  state.styleRule = STYLE_RULE;
   state.base = baseOf(state);
   const topWords = Object.entries(evidenceWords).sort((a, b) => b[1] - a[1]).slice(0, 12);
   return { state, topWords };
@@ -280,15 +313,21 @@ function estimateGenesis(posts, opts = {}) {
 const ENERGY = { anger: 1, excitement: 0.9, anxiety: 0.75, joy: 0.6, neutral: 0.3, nostalgia: 0.2, sadness: 0.15, calm: 0.1 };
 
 /**
- * 画風を決める（最初の作品のときだけ。以後は変えない）。
- *   lines（線の流れと渦）：感情の動きが激しい人、または投稿が多くて「!」もよく使う人
- *   poly （区画の多角形）：落ち着いていて「!」をあまり使わない人
- *   orbit（軌道の多角形）：その間
+ * 画風の決め方の版。決め方を変えたら上げる。版が古い作品は、次の投稿で画風を決め直す（1 回だけ）。
+ *   1：lines は感情の動きがとても激しい人だけ
+ *   2：lines（流れの線）を、ふつうの人にも出るようにした
+ *   3：poly（区画の多角形）をやめ、lines か orbit の 2 つにした
+ */
+const STYLE_RULE = 3;
+
+/**
+ * 画風を決める（最初の作品のとき。以後は STYLE_RULE が変わったときだけ決め直す）。
+ *   lines（流れの線と渦）：感情に動きがある人、または「!」を含む投稿が 6% 以上の人（多くの人がここに入る）
+ *   orbit（軌道の多角形）：それ以外の、落ち着いて淡々と投稿する人
  */
 function chooseStyle(s) {
   const energy = EMOTIONS.reduce((a, e) => a + (s.mix[e] / 1000) * ENERGY[e], 0);
-  if (energy >= 0.55 || (s.activity >= 700 && s.exclaim >= 300)) return "lines";
-  if (energy < 0.3 && s.exclaim < 150) return "poly";
+  if (energy >= 0.4 || s.exclaim >= 60) return "lines";
   return "orbit";
 }
 
@@ -341,9 +380,12 @@ function evolveState(prev, post, opts = {}) {
     length: pull("length", [...normalizeText(post.text)].length),
     lastPostAt: Number.isFinite(t) && (!Number.isFinite(last) || t > last) ? new Date(t).toISOString() : prev.lastPostAt,
     posts: (prev.posts || 0) + 1,
-    style: prev.style,          // 画風は最初の作品で決めたまま
+    recent: [traceOf(post, a), ...(prev.recent || [])].slice(0, RECENT_MAX),
+    // 画風は最初の作品で決めたまま。決め方の版が古いときだけ、最初の作品の値（base）で決め直す
+    style: prev.styleRule === STYLE_RULE ? prev.style : chooseStyle(base),
+    styleRule: STYLE_RULE,
     base,
   };
 }
 
-export { EMOTIONS, LEXICON, analyzePost, estimateGenesis, evolveState, chooseStyle, detectLangs, toMix, minuteOfDay };
+export { STYLE_RULE, RECENT_MAX, traceOf, EMOTIONS, LEXICON, analyzePost, estimateGenesis, evolveState, chooseStyle, detectLangs, toMix, minuteOfDay };

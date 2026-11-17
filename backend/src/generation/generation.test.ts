@@ -42,7 +42,7 @@ describe("generateWithoutAi", () => {
     const { artwork: art } = generateWithoutAi({ kind: "genesis", did: "did:plc:alice", posts, profile: {}, features: computeFeatures(posts) });
     expect(art.code).toBe(DRAW_CODE);
     expect(art.params.seed).toBe(seedFromDid("did:plc:alice"));
-    expect(["lines", "poly", "orbit"]).toContain(art.params.style);
+    expect(["lines", "orbit"]).toContain(art.params.style);
     expect(art.animated).toBe(art.params.style !== "lines");
     expect(Object.values(art.analysis.mix).reduce((a, b) => a + b, 0)).toBeGreaterThan(990);
     expect(hasFloat(art)).toBe(false);

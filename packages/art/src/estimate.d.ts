@@ -1,6 +1,7 @@
 /** estimate.js の型。 */
 export type Emotion = "joy" | "calm" | "excitement" | "nostalgia" | "sadness" | "anxiety" | "anger" | "neutral";
-export type Style = "lines" | "poly" | "orbit";
+/** 画風。poly（区画）は廃止したが、古い作品の状態には残っている。 */
+export type Style = "lines" | "orbit" | "poly";
 export type Mix = Record<Emotion, number>;
 
 export interface SourcePost {
@@ -21,7 +22,11 @@ export interface ArtState {
   length: number;
   lastPostAt: string | null;
   posts: number;
+  /** 直近の投稿の跡（新しい順、最大 RECENT_MAX 件）。古い作品にはない。 */
+  recent?: number[];
   style: Style;
+  /** 画風の決め方の版（STYLE_RULE）。古い作品にはない。 */
+  styleRule?: number;
   base: { mix: Mix; activity: number; minute: number; exclaim: number; emoji: number; length: number };
 }
 
@@ -35,6 +40,9 @@ export interface PostAnalysis {
 }
 
 export declare const EMOTIONS: readonly Emotion[];
+export declare const STYLE_RULE: number;
+export declare const RECENT_MAX: number;
+export declare function traceOf(post: SourcePost, analysis: PostAnalysis): number;
 export declare function analyzePost(text: string, langs?: string[]): PostAnalysis;
 export declare function estimateGenesis(posts: SourcePost[], opts?: { timeZone?: string }): { state: ArtState; topWords: [string, number][] };
 export declare function evolveState(prev: ArtState, post: SourcePost, opts?: { timeZone?: string; rate?: number; anchor?: number }): ArtState;
