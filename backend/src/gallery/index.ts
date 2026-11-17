@@ -78,6 +78,9 @@ export function createGalleryIndex(db: Sql) {
       if (!parsed.success) return false;
       const newest = (await db.get<{ rkey: string | null }>("SELECT MAX(rkey) AS rkey FROM artworks WHERE did = ?", input.did))?.rkey;
       if (newest && newest > input.rkey) return true;
+      // 同じ版がすでに入っていれば書き込まない（Jetstream で同じイベントを読み直したとき）
+      const current = await db.get<{ cid: string }>("SELECT cid FROM artworks WHERE uri = ?", artworkUri(input.did, input.rkey));
+      if (current?.cid === input.cid) return true;
       await db.run(
         `INSERT INTO artworks (uri, did, rkey, cid, record, created_at, indexed_at) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (uri) DO UPDATE SET cid = excluded.cid, record = excluded.record, created_at = excluded.created_at`,

@@ -169,6 +169,7 @@ describe("Cron ごとの取り込み（pullOnce）", () => {
     saveCursor: (c) => void (saved = c),
     createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
     idleMs: 20,
+    firstIdleMs: 40,
     maxMs: 1000,
     now: () => NOW,
     log: () => {},
@@ -207,26 +208,38 @@ describe("Cron ごとの取り込み（pullOnce）", () => {
     expect(result).toMatchObject({ outcome: "pulled", events: 2, jobs: 2 });
     expect((await jobs.listByDid(ALICE)).map((j) => j.rkey).sort()).toEqual(["3a", "3b"]);
     expect(FakeSocket.instances[0]!.closed).toBe(true);
-    expect(saved).toBe(NOW_US + 1);
+    expect(saved).toBe(NOW_US - 60_000_000); // 直近 3 分は次回も読み直すので、前回より後ろに戻さないだけ
   });
 
-  it("何も届かなければ、しばらくして切断し、カーソルを今に近づける", async () => {
+  it("何も届かなければ、しばらくして切断し、カーソルを接続した時刻の 3 分前まで進める", async () => {
     saved = NOW_US - 3600_000_000;
     const result = await pullOnce({ users, jobs, gallery }, options());
     expect(result).toMatchObject({ outcome: "pulled", events: 0 });
-    expect(saved).toBe(NOW_US - 5_000_000);
+    expect(saved).toBe(NOW_US - 180_000_000);
   });
 
-  it("上限時間で打ち切ったときは、処理したところまでしかカーソルを進めない", async () => {
-    saved = NOW_US - 3600_000_000;
-    onConnect((socket) => {
-      socket.receive(event("3a", NOW_US - 1800_000_000));
-      // idleMs より短い間隔で届き続ける
-      const timer = setInterval(() => socket.receive({ did: ALICE, time_us: NOW_US - 1700_000_000, kind: "identity" }), 5);
-      socket.addEventListener("close", () => clearInterval(timer));
-    });
-    await pullOnce({ users, jobs, gallery }, options({ maxMs: 60 }));
-    expect(saved).toBe(NOW_US - 1700_000_000);
+  it("最初のイベントは idleMs より遅れて届いても拾う（DID で絞られて、さかのぼる間は何も届かない）", async () => {
+    saved = NOW_US - 120_000_000;
+    onConnect((socket) => setTimeout(() => socket.receive(event("3late", NOW_US - 90_000_000)), 30));
+    const result = await pullOnce({ users, jobs, gallery }, options());
+    expect(result.jobs).toBe(1);
+    expect((await jobs.listByDid(ALICE)).map((j) => j.rkey)).toEqual(["3late"]);
+  });
+
+  it("処理に失敗したイベントがあれば、カーソルはその手前までしか進めない", async () => {
+    saved = NOW_US - 900_000_000;
+    const broken = { ...gallery, upsert: async () => Promise.reject(new Error("D1 が落ちた")) };
+    onConnect((socket) =>
+      socket.receive({
+        did: ALICE,
+        time_us: NOW_US - 600_000_000,
+        kind: "commit",
+        commit: { operation: "create", collection: "com.example.artsky.artwork", rkey: "self", cid: CID, record: artwork() },
+      }),
+    );
+    await pullOnce({ users, jobs, gallery: broken }, options());
+    // 何も問題がなければ「3 分前」まで進むが、失敗したイベントの手前で止める
+    expect(saved).toBe(NOW_US - 600_000_000 - 1);
   });
 
   it("接続できなければカーソルを変えない", async () => {
@@ -267,6 +280,6 @@ describe("Cron ごとの取り込み（pullOnce）", () => {
     expect(result).toMatchObject({ backfilled: 1, jobs: 1 });
     expect((await jobs.listByDid(ALICE)).map((j) => j.rkey)).toEqual(["3new"]);
     expect(new URL(FakeSocket.instances[0]!.url).searchParams.has("cursor")).toBe(false);
-    expect(saved).toBe(NOW_US - 5_000_000);
+    expect(saved).toBe(NOW_US - 180_000_000);
   });
 });

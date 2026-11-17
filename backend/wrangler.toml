@@ -29,3 +29,7 @@ TZ_NAME = "Asia/Tokyo"
 # ローカル（pnpm cf:dev）では .dev.vars に PUBLIC_URL= を書いて空にし、ループバッククライアントで動かす。
 PUBLIC_URL = "https://art-sky.renkon.workers.dev"
 # COOKIE_SECRET は wrangler secret put COOKIE_SECRET で設定する（ローカルでは .dev.vars に書く）。
+
+# ログをダッシュボード（art-sky → Logs）に残す。無料プランで 1 日 20 万件まで。
+[observability]
+enabled = true

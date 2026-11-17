@@ -88,6 +88,11 @@ export interface PullOptions {
   feedAgent?: FeedAgent;
   /** 何も届かない時間がこれだけ続いたら、追いついたとみなして切断する。 */
   idleMs?: number;
+  /**
+   * 最初のイベントが届くまでに待つ時間。Jetstream は DID で絞ってから送るので、さかのぼって読む間は
+   * 対象の投稿が見つかるまで何も届かない。idleMs より長く待つ。
+   */
+  firstIdleMs?: number;
   /** 1 回の接続の上限時間。 */
   maxMs?: number;
   now?: () => number;
@@ -116,6 +121,12 @@ const DEFAULT_URL = "wss://jetstream2.us-east.bsky.network/subscribe";
 const MAX_WANTED_DIDS = 10_000;
 /** 取りこぼしを避けるため、最後に処理した時刻のこれだけ前から読み直す。 */
 const REWIND_US = 5_000_000;
+/**
+ * 追いついたと判定しても、カーソルは接続した時刻のこれだけ前までしか進めない。
+ * 「何も届かない＝追いついた」という判定は、届くのが遅れただけの場合に外れるので、
+ * 直近の分は次回も読み直して拾えるようにする（ジョブは投稿ごとに 1 つなので重複しない）。
+ */
+const REREAD_US = 3 * 60 * 1_000_000;
 /** Jetstream がさかのぼれるのはおよそ 1 日分。これより古いカーソルは続きを読めないものとして扱う。 */
 const MAX_CURSOR_AGE_US = 20 * 3600 * 1_000_000;
 /** 取り直すときに見る、1 人あたりの直近の投稿数。 */
@@ -125,10 +136,12 @@ const BACKFILL_POSTS = 5;
  * Jetstream に 1 回だけつなぎ、前回の続きから今までのイベントを handleEvent に渡して切断する。
  *
  * - 購読は登録済みの DID と、投稿・作品の 2 つのコレクションに絞る。
- * - 次のどれかで切断し、最後に処理した位置をカーソルとして保存する。
+ * - 次のどれかで切断し、カーソルを保存する。
  *     1. 接続した時刻のイベントまで追いついた
- *     2. idleMs のあいだ何も届かない（新しいイベントがない）
+ *     2. 何も届かない時間が続いた（最初のイベントまでは firstIdleMs、そのあとは idleMs）
  *     3. maxMs を過ぎた（残りは次回）
+ *   1 と 2 では、カーソルを「接続した時刻の 3 分前」まで進める（直近の分は次回も読み直す）。
+ *   3 と、処理に失敗したイベントがあったときは、確実に処理したところまでしか進めない。
  * - 同じイベントが二度届いても handleEvent は同じ結果になるので、少し前から読み直してよい。
  * - カーソルが古すぎる（止まっていた）ときは、各人の直近の投稿を公開 AppView から取り直し、
  *   今の時刻から読み始める。
@@ -138,6 +151,7 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
   const now = options.now ?? Date.now;
   const createSocket = options.createSocket ?? ((url: string) => new WebSocket(url));
   const idleMs = options.idleMs ?? 2000;
+  const firstIdleMs = options.firstIdleMs ?? 6000;
   const maxMs = options.maxMs ?? 20_000;
   const result: PullResult = { outcome: "pulled", events: 0, jobs: 0, backfilled: 0 };
 
@@ -163,6 +177,10 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
   let opened = false;
   /** 今までの分を受け取り終えたか（何も届かなくなった、または接続した時刻に追いついた）。 */
   let caughtUp = false;
+  /** 処理に失敗した最初のイベントの時刻。カーソルはこれより先に進めない。 */
+  let failedAt: number | undefined;
+  let firstMessageMs: number | undefined;
+  let ending = "";
   await new Promise<void>((resolve) => {
     let ws: WebSocket;
     try {
@@ -190,15 +208,19 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
       void queue.then(resolve); // 処理中のイベントを終えてから返す
     };
     const limit = setTimeout(() => {
-      log(`上限の ${maxMs / 1000} 秒に達したので、残りは次回にします`);
+      ending = "上限時間";
       finish();
     }, maxMs);
     const resetIdle = () => {
       clearTimeout(idle);
-      idle = setTimeout(() => {
-        caughtUp = true;
-        finish();
-      }, idleMs);
+      idle = setTimeout(
+        () => {
+          caughtUp = true;
+          ending = "受信なし";
+          finish();
+        },
+        firstMessageMs === undefined ? firstIdleMs : idleMs,
+      );
     };
 
     ws.addEventListener("open", () => {
@@ -207,6 +229,7 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
     });
     ws.addEventListener("message", (message) => {
       if (done) return;
+      firstMessageMs ??= now() - startedUs / 1000;
       resetIdle();
       let event: JetstreamEvent;
       try {
@@ -217,6 +240,7 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
       if (typeof event.time_us !== "number") return;
       if (event.time_us >= startedUs) {
         caughtUp = true; // 接続した時刻まで追いついた。このイベントまで処理して終える
+        ending = "追いついた";
         clearTimeout(idle);
       }
       queue = queue.then(async () => {
@@ -227,6 +251,7 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
           if (handled !== "ignored") log(`${event.did} ${event.commit?.collection}/${event.commit?.rkey}: ${handled}`);
           last = event.time_us;
         } catch (err) {
+          failedAt ??= event.time_us;
           log(`イベントを処理できませんでした: ${(err as Error).message}`);
         }
       });
@@ -237,6 +262,7 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
         log("接続できませんでした");
         result.outcome = "failed";
       }
+      ending ||= "切断された";
       finish();
     });
     ws.addEventListener("error", () => {
@@ -244,10 +270,15 @@ export async function pullOnce(deps: ConsumerDeps, options: PullOptions): Promis
     });
   });
 
-  // 追いついたなら、接続した時刻までは受け取り済み。イベントがなくてもカーソルを進め、
-  // 次回に古いところから読み直さないようにする（読み直しの分だけ手前にしておく）。
-  if (caughtUp) last = Math.max(last ?? 0, startedUs - REWIND_US);
-  if (last !== undefined && last !== cursor) await options.saveCursor(last);
+  // 追いついたなら、イベントがなくてもカーソルを進める（直近 3 分は次回も読み直す）。後ろには戻さない。
+  let next = last;
+  if (caughtUp) next = Math.max(cursor ?? 0, startedUs - REREAD_US);
+  if (failedAt !== undefined && next !== undefined) next = Math.min(next, failedAt - 1);
+  if (next !== undefined && next !== cursor) await options.saveCursor(next);
+  log(
+    `取り込み：${result.outcome}、${ending || "-"}、イベント ${result.events} 件、ジョブ ${result.jobs} 件、` +
+      `最初の受信まで ${firstMessageMs ?? "-"}ms、${now() - startedUs / 1000}ms`,
+  );
   return result;
 }
 
