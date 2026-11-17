@@ -40,22 +40,19 @@ pnpm exec wrangler d1 create art-sky     # 表示された database_id を wrang
 
 ```sh
 pnpm exec wrangler secret put COOKIE_SECRET   # 16 文字以上のランダムな文字列を入力する
-pnpm build --dir ..                           # 画面をビルドする（リポジトリの直下で pnpm build でもよい）
+(cd .. && pnpm build)                         # 画面をビルドする（frontend/dist）
 pnpm cf:deploy                                # D1 のスキーマを適用してからデプロイする
 ```
 
-## 今のサーバー（Node.js）のデータを移す
+## 今のサーバー（Node.js）のデータについて
 
-ローカルの SQLite から、参加者とログイン情報を D1 に移す。作品の索引は、各人がログインしたときに PDS から作り直されるので、移さなくてよい。
+移さなくてよい。
 
-```sh
-sqlite3 data/art-sky.sqlite ".mode insert users"          "SELECT * FROM users;"          >  migrate.sql
-sqlite3 data/art-sky.sqlite ".mode insert oauth_sessions" "SELECT * FROM oauth_sessions;" >> migrate.sql
-pnpm exec wrangler d1 execute art-sky --remote --file migrate.sql
-rm migrate.sql   # ログイン情報が入っているので残さない
-```
-
-列の並びは同じスキーマ（`migrations/0001_init.sql`）なのでそのまま入る。Jetstream のカーソルは移さない。初回の Cron は今の時刻から読み始める。
+- ログイン情報（OAuth のセッション）は、発行したときのクライアント ID（公開 URL の `/client-metadata.json`）に結びついている。
+  公開 URL が変われば以前のセッションは使えないので、参加者は新しい URL でログインし直す。
+- 作品の正本は各人の PDS にある。ログインし直したときに、PDS から索引が作り直される。
+- 参加者の登録（同意）は D1 には残っていないので、初回登録の画面がもう一度出る。
+  初回登録は `self` の作品を上書きするだけなので、作品が増えることはない。
 
 ## 無料プランの制限との関係
 
