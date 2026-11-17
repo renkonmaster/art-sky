@@ -192,6 +192,7 @@ try {
   await page.goto(`${BASE}/manage`);
   await page.waitForSelector(".jobs li");
   assert((await page.locator('.badge[data-status="done"]').count()) === 1, "生成の履歴が出ていない");
+  assert((await page.getByRole("link", { name: "作品を見る" }).count()) === 1, "今の作品へのリンクが 1 つではない");
   await shot(page, "service-manage");
   await page.getByRole("switch", { name: "ギャラリーに掲載する" }).click();
   await page.waitForSelector('.switch[aria-checked="false"]');

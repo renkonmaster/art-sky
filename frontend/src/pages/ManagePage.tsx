@@ -137,6 +137,10 @@ function JobsPanel() {
 
   // 終わっていないジョブがある間は、一覧を取り直し続ける。
   const active = jobs?.some((job) => !isFinished(job)) === true;
+  /** 今の作品を作ったジョブ（完了したもののうち、最後に完了したもの）。 */
+  const currentJobId = jobs
+    ?.filter((job) => job.status === "done" && job.artwork)
+    .reduce<Job | undefined>((a, job) => (!a || job.updatedAt > a.updatedAt ? job : a), undefined)?.id;
   useEffect(() => {
     if (!active) return;
     const timer = setInterval(() => void load(), JOB_POLL_MS);
@@ -170,6 +174,8 @@ function JobsPanel() {
       {jobs && jobs.length > 0 ? (
         <ul className="jobs">
           {jobs.map((job) => {
+            // 作品は 1 人 1 件で、生成のたびに上書きされる。過去の作品は残らないので、
+            // 「作品を見る」は今の作品を作ったジョブ（最後に完了したもの）にだけ出す。
             const postUrl = job.trigger ? blueskyPostUrl(job.trigger.uri) : null;
             return (
               <li key={job.id} data-status={job.status}>
@@ -184,7 +190,7 @@ function JobsPanel() {
                   </p>
                   {job.error ? <p className="form-error">{job.error.message}</p> : null}
                   <p className="jobs-links">
-                    {job.artwork ? <Link to={artworkPath(job.artwork.uri)}>作品を見る</Link> : null}
+                    {job.artwork && job.id === currentJobId ? <Link to={artworkPath(job.artwork.uri)}>作品を見る</Link> : null}
                     {postUrl ? (
                       <a href={postUrl} target="_blank" rel="noreferrer">
                         元の投稿
